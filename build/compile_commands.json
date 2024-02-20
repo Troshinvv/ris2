@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/mikhail/ris2/build",
+  "command": "/usr/bin/g++  -DUSE_ROOT -I/home/mikhail/ris2 -I/home/mikhail/QnTools/install/lib/cmake/QnTools/../../../include/QnTools -isystem /home/mikhail/root-6.24.06/install/include -isystem /home/mikhail/QnTools/install/include/QnTools  -g   -std=gnu++17 -o CMakeFiles/draw.dir/src/main.cc.o -c /home/mikhail/ris2/src/main.cc",
+  "file": "/home/mikhail/ris2/src/main.cc"
+}
+]
