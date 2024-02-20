@@ -99,6 +99,10 @@ public:
     legends_.emplace_back( leg );
     return *this;
   }
+  Picture& AddFunction( TF1* func ){
+    functions_.emplace_back(func);
+    return *this;
+  }
   TPad* Print(  ){
     pad_->cd();
     auto axis_titles = std::string{";"}.append( x_axis_.title_ ).append(";").append(y_axis_.title_);
@@ -120,10 +124,12 @@ public:
       vec_tlatexs_.back()->Draw("same");
     }
     for( auto& leg : legends_ ){
+      leg->SetFillStyle(0);
       leg->Draw( "same" );
     }
-    zero_line_.reset(new TF1( "zero", "0", x_axis_.lo_, x_axis_.hi_ ));
-    zero_line_->Draw("same");
+    functions_.emplace_back(new TF1( "zero", "0", x_axis_.lo_, x_axis_.hi_ ));
+    for( auto& f : functions_ )
+      f->Draw("same");
     return pad_;
   }
 private:
@@ -133,7 +139,7 @@ private:
   std::unique_ptr<TMultiGraph> graph_stack_{};
   std::vector<Text> texts_{};
   std::vector< std::unique_ptr<TLatex> > vec_tlatexs_{};
-  std::unique_ptr<TF1> zero_line_{};
+  std::vector< std::unique_ptr<TF1> > functions_{};
   std::vector<std::unique_ptr<TLegend>> legends_;
 };
 

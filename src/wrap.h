@@ -27,29 +27,34 @@ struct Style{
 };
 
 template<typename T> 
-class Wrap : public T{
+class Wrap{
 public:
   Wrap() = default;
   template<typename... Args>
-  Wrap(std::string title, Args... args) : title_{std::move(title)}, T( args... ) {}
-  Wrap( T obj ) : T(obj) {}
+  Wrap(std::string title, Args... args) : title_{std::move(title)}, obj_( args... ) {}
+  Wrap( T obj ) : obj_( std::move(obj) ) {}
   Wrap( const Wrap& other ) : 
     title_{other.title_}, 
     points_{ nullptr },
     style_( other.style_ ),
-    T{ dynamic_cast<const T&>( other ) }{}
+    obj_{other.obj_}{}
   Wrap& operator=(const Wrap& other){
     title_ = other.title_; 
     points_.reset();
     style_ = other.style_;
+    obj_ = other.obj_;
   }
   Wrap( Wrap&& ) = default;
   Wrap& operator=(Wrap&&) = default;
   ~Wrap() = default;
+  T& operator*(){
+    return obj_;
+  }
+  const std::string& GetTitle() const { return title_; }
   TGraph* ReleasePoints(){ UpdatePoints(); return points_.release(); }
   Wrap& SetStyle( Style style ){ style_ = std::move(style); return *this; }
   void UpdatePoints(){ 
-    points_.reset( dynamic_cast<T*>(this)->GetPoints() );
+    points_.reset( obj_.GetPoints() );
     points_->SetLineColor(style_.color_);
     points_->SetMarkerColor(style_.color_);
     if( style_.marker_ >= 0 )
@@ -57,12 +62,12 @@ public:
     if( style_.marker_ < 0 )
       points_->SetLineStyle( style_.marker_ );
   }
-  Wrap<T> Divide( Wrap<T> other ) const {
-    auto result_t = dynamic_cast<const T*>(this)->Divide( *dynamic_cast<const T*>(&other) );
-    return Wrap<T>( result_t );
-  }
   const Style& GetStyle() const { return style_; }
+  Wrap<T> Divide( const Wrap<T>& other) const {
+    return Wrap<T>{ obj_.Divide( other.obj_ ) };
+  }
 private:
+  T obj_;
   std::string title_{};
   std::unique_ptr<TGraph> points_{};
   Style style_{};
@@ -88,16 +93,17 @@ public:
         correlations.push( Qn::DataContainerStatCalculate(*ptr_stat_collect) );
       }
       correlations.push( Qn::DataContainerStatCalculate(*ptr) );
-      correlation_ = correlations.front();
+    }
+    correlation_ = correlations.front();
+    correlations.pop();
+    auto* list_merge = new TList;
+    while( !correlations.empty() ) {
+      auto* to_merge = new Qn::DataContainerStatCalculate( correlations.front() );
+      list_merge->Add(to_merge);
       correlations.pop();
-      auto* list_merge = new TList;
-      while( !correlations.empty() ) {
-        auto* to_merge = new Qn::DataContainerStatCalculate( correlations.front() );
-        list_merge->Add(to_merge);
-        correlations.pop();
-      }
-      correlation_.Merge(list_merge);
-    }  
+    }
+    correlation_.Merge(list_merge);
+    
   }
   Correlation( Qn::DataContainerStatCalculate corr ) : correlation_{ std::move(corr) } {}
   Correlation(const Correlation& ) = default;
