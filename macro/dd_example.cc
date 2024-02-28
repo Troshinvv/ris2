@@ -20,7 +20,7 @@ void dd_example(){
           "proton/v1.F3_RESCALED(F1_RESCALED,Tneg_RESCALED).y1y1centrality",
     }
   };
-  container.SetStyles( std::vector{
+  container.GetPalette().SetPalette( std::vector{
       Style().SetColor( kRed ).SetMarker(kFullCircle),
       Style().SetColor( kBlue+2 ).SetMarker(kFullCircle),
       Style().SetColor( kGreen+2 ).SetMarker(kFullCircle),
@@ -30,13 +30,13 @@ void dd_example(){
   } );
 
   auto pT_proj = container;
-  pT_proj.Rebin( { {"centrality", 1, 10, 30} } )
+  pT_proj(  []( Correlation& obj ){ obj.Rebin( {{"centrality", 1, 10, 30}} );}  )
     .SetSliceAxis({"trProtonY", 6, -0.4, 0.8})
     .SetProjectionAxis({ "trPt", 7, 0.0, 1.4 });
   auto leg_pT = pT_proj.MakeLegend( "y_{cm}"s );
   
   auto y_proj = container;
-  y_proj.Rebin( { {"centrality", 1, 10, 30} } )
+  y_proj(  []( Correlation& obj ){ obj.Rebin( {{"centrality", 1, 10, 30}} );}  )
     .SetSliceAxis({ "trPt", 5, 0.0, 2.0 })
     .SetProjectionAxis({"trProtonY", 10, -0.6, 1.4});
   auto leg_y = y_proj.MakeLegend("p_{T}"s, "GeV/c"s);

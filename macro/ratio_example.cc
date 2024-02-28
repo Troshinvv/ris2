@@ -50,7 +50,7 @@ void ratio_example(){
       Style().SetColor( kBlue+2 ).SetMarker(kFullCircle),
       Style().SetColor( kGreen+2 ).SetMarker(kFullCircle),
   } );
-  container.Perform( []( Wrap<Correlation>& obj ){
+  container( []( Correlation& obj ){
       (*obj).Rebin( { {"centrality", 1, 10, 30}, { "trPt", 1, 0.4, 1.4 } } ).Project({"trProtonY"});
   } );
   auto leg = container.MakeLegend( {0.25, 0.8, 0.55, 0.55} );

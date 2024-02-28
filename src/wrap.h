@@ -50,6 +50,9 @@ public:
   T& operator*(){
     return obj_;
   }
+  T* operator->(){
+    return &obj_;
+  }
   const std::string& GetTitle() const { return title_; }
   Wrap& Fit( TF1* function ){
     UpdatePoints();
@@ -89,21 +92,27 @@ public:
   Correlation() = default;
   Correlation( 
     std::string str_file_name, 
-    std::vector<std::string> vec_objects
+    std::vector<std::string> vec_objects,
+    std::vector<double> vec_weihts = {}
   ){
     auto file = std::make_unique<TFile>( str_file_name.c_str(), "READ" );
     Qn::DataContainerStatCalculate* ptr{nullptr};
     std::queue<Qn::DataContainerStatCalculate> correlations;
+    int i=0;
     for( auto name : vec_objects ){
+      auto weight = 1.;
+      if( !vec_weihts.empty() )
+        weight = vec_weihts.at(i);
       file->GetObject( name.c_str(), ptr );
       if( !ptr ){
         Qn::DataContainerStatCalculate* ptr_stat_collect{nullptr};
         file->GetObject( name.c_str(), ptr_stat_collect );
         if( !ptr_stat_collect )
             throw std::runtime_error( std::string("No object in a file").append( " " ).append( name ) );
-        correlations.push( Qn::DataContainerStatCalculate(*ptr_stat_collect) );
+        correlations.push( Qn::DataContainerStatCalculate(*ptr_stat_collect)*weight );
       }
-      correlations.push( Qn::DataContainerStatCalculate(*ptr) );
+      correlations.push( Qn::DataContainerStatCalculate(*ptr)*weight );
+      ++i;
     }
     correlation_ = correlations.front();
     correlations.pop();

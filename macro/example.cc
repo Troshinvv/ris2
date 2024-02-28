@@ -20,8 +20,8 @@ void example(){
     }
   };
   container.SetStyle( Style().SetMarker(kFullCircle).SetColor(kBlue+2) );
-  (*container).Rebin( { {"centrality", 1, 10, 30}, { "trPt", 1, 0.2, 1.4 } } )
-              .Project({"trProtonY"});
+  container->Rebin( { {"centrality", 1, 10, 30}, { "trPt", 1, 0.2, 1.4 } } )
+            .Project({"trProtonY"});
 
   auto plot = Plot( {1000, 1100} );
   plot.AddSubPlot( std::vector<double>{ 0.0, 0.0, 1.0, 1.0 } )

@@ -80,8 +80,9 @@ public:
     palette_.PaintObjects(bunch_);
     return bunch_; 
   }
+  template<typename Func>
+  Wrap<T>& operator()( Func function ){ std::for_each( bunch_.begin(), bunch_.end(), function ); return *this; }
   Wrap<T>& operator[]( size_t idx ){ return bunch_.at(idx); }
-  
   TLegend* MakeLegend(std::vector<double> position = {}){
     std::vector<std::string> bunch_titles_;
     std::for_each( bunch_.begin(), bunch_.end(), [&bunch_titles_]( const Wrap<T>& obj ) mutable { 
@@ -111,6 +112,12 @@ public:
     function( base_correlation_ ); 
     return *this; 
   }
+  template<typename Func>
+  DoubleDifferential& operator()( const Func& function ){ 
+    function( base_correlation_ ); 
+    return *this; 
+  }
+  Palette& GetPalette(){ return palette_; }
   DoubleDifferential& SetSliceAxis(Qn::AxisD slie_axis){ slice_axis_ = std::move(slie_axis); return *this; }
   DoubleDifferential& SetProjectionAxis(Qn::AxisD projection_axis){ projection_axis_ = std::move(projection_axis); return *this; }
   DoubleDifferential& SetPalette( const std::vector<Style>& styles ){
@@ -180,6 +187,12 @@ public:
   }
   template<typename Func>
   RatioBuilder<T>& Perform( const Func& function ){ 
+    std::for_each( results_.begin(), results_.end(), function ); 
+    function( reference_ ); 
+    return *this; 
+  }
+  template<typename Func>
+  RatioBuilder<T>& operator()( const Func& function ){ 
     std::for_each( results_.begin(), results_.end(), function ); 
     function( reference_ ); 
     return *this; 
