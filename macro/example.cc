@@ -19,13 +19,14 @@ void example(){
           "proton/v1.F3_RESCALED(F1_RESCALED,Tneg_RESCALED).y1y1centrality",
     }
   };
-  container.SetStyle( Style().SetMarker(kFullCircle).SetColor(kBlue+2) )
-        .Rebin( { {"centrality", 1, 10, 30}, { "trPt", 1, 0.2, 1.4 } } )
-        .Project({"trProtonY"});
+  container.SetStyle( Style().SetMarker(kFullCircle).SetColor(kBlue+2) );
+  (*container).Rebin( { {"centrality", 1, 10, 30}, { "trPt", 1, 0.2, 1.4 } } )
+              .Project({"trProtonY"});
 
-  Plot::Last()
+  auto plot = Plot( {1000, 1100} );
+  plot.AddSubPlot( std::vector<double>{ 0.0, 0.0, 1.0, 1.0 } )
       .SetXAxis(Axis().SetTitle("y_{cm}").SetLo(-0.6).SetHi(1.4))
       .SetYAxis(Axis().SetTitle("v_{1}").SetLo(-0.1).SetHi(0.1))
-      .AddToPlot( container )
-      .Print( "/home/mikhail/ris2/macro/pictures/example.png" );
+      .AddToPlot( container );
+  plot.Print( "/home/mikhail/ris2/macro/pictures/example.png" );
 }
