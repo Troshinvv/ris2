@@ -51,16 +51,26 @@ public:
     return obj_;
   }
   const std::string& GetTitle() const { return title_; }
+  Wrap& Fit( TF1* function ){
+    UpdatePoints();
+    points_->Fit( function );
+    auto fitted = dynamic_cast<TF1*>(points_->GetListOfFunctions()->First());
+    function->SetLineColor( style_.color_ );
+    fit_ = function;
+    return *this;
+  }
   TGraph* ReleasePoints(){ UpdatePoints(); return points_.release(); }
+  TF1* GetFit() { return fit_; };
   Wrap& SetStyle( Style style ){ style_ = std::move(style); return *this; }
   void UpdatePoints(){ 
-    points_.reset( obj_.GetPoints() );
+    if( !points_ )
+      points_.reset( obj_.GetPoints() );
     points_->SetLineColor(style_.color_);
     points_->SetMarkerColor(style_.color_);
     if( style_.marker_ >= 0 )
       points_->SetMarkerStyle(style_.marker_);
     if( style_.marker_ < 0 )
-      points_->SetLineStyle( style_.marker_ );
+      points_->SetLineStyle( abs(style_.marker_) );
   }
   const Style& GetStyle() const { return style_; }
   Wrap<T> Divide( const Wrap<T>& other) const {
@@ -70,6 +80,7 @@ private:
   T obj_;
   std::string title_{};
   std::unique_ptr<TGraph> points_{};
+  TF1* fit_{nullptr};
   Style style_{};
 };
 
@@ -89,7 +100,7 @@ public:
         Qn::DataContainerStatCalculate* ptr_stat_collect{nullptr};
         file->GetObject( name.c_str(), ptr_stat_collect );
         if( !ptr_stat_collect )
-          throw std::runtime_error( "No object in a file" );
+            throw std::runtime_error( std::string("No object in a file").append( " " ).append( name ) );
         correlations.push( Qn::DataContainerStatCalculate(*ptr_stat_collect) );
       }
       correlations.push( Qn::DataContainerStatCalculate(*ptr) );
@@ -150,7 +161,7 @@ public:
     for( const auto& name : vec_objects ){
       file->GetObject( name.c_str(), ptr );
       if( !ptr )
-        throw std::runtime_error( "No object in a file" );
+        throw std::runtime_error( std::string("No object in a file").append( " " ).append( name ) );
       histograms.push( ptr );
     }
     auto new_name = std::string(histograms.front()->GetName()) + "_copy";

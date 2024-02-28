@@ -88,6 +88,9 @@ public:
         graph_stack_->Add( obj.ReleasePoints(), "P" ); 
       if( obj.GetStyle().marker_ < 0 )
         graph_stack_->Add( obj.ReleasePoints(), "L" ); 
+      if( obj.GetFit() ){
+        functions_.emplace_back(std::unique_ptr<TF1>( obj.GetFit()) );
+      }
     } );    
     return *this;
   }

@@ -70,7 +70,7 @@ public:
 
   template<typename... Args>
   Bunch& AddToBunch( std::string title, Args... args ){ 
-    bunch_.emplace_back( title, args... ); return *this; 
+    bunch_.emplace_back( title, args... ); 
     return *this;
   }
   Palette& GetPalette() { return palette_; }
@@ -84,7 +84,9 @@ public:
   
   TLegend* MakeLegend(std::vector<double> position = {}){
     std::vector<std::string> bunch_titles_;
-    std::for_each( bunch_.begin(), bunch_.end(), [bunch_titles_]( Wrap<T> obj ) mutable { bunch_titles_.emplace_back( obj.GetTitle() ); } );
+    std::for_each( bunch_.begin(), bunch_.end(), [&bunch_titles_]( const Wrap<T>& obj ) mutable { 
+      bunch_titles_.emplace_back( obj.GetTitle() ); 
+    } );
     auto leg = palette_.MakeLegend( bunch_titles_, position );
     return leg;
   }
@@ -104,8 +106,11 @@ public:
   DoubleDifferential( DoubleDifferential&& ) = default;
   DoubleDifferential& operator=( DoubleDifferential&& ) = default;
   ~DoubleDifferential() = default;
-  DoubleDifferential& Rebin( const std::vector<Qn::AxisD>& axes ){ base_correlation_.Rebin(axes); return *this; }
-  DoubleDifferential& Project( const std::vector<std::string>& axes ){ base_correlation_.Project(axes); return *this; }
+  template<typename Func>
+  DoubleDifferential& Perform( const Func& function ){ 
+    function( base_correlation_ ); 
+    return *this; 
+  }
   DoubleDifferential& SetSliceAxis(Qn::AxisD slie_axis){ slice_axis_ = std::move(slie_axis); return *this; }
   DoubleDifferential& SetProjectionAxis(Qn::AxisD projection_axis){ projection_axis_ = std::move(projection_axis); return *this; }
   DoubleDifferential& SetPalette( const std::vector<Style>& styles ){
