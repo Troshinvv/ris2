@@ -6,7 +6,7 @@ void example(){
   gROOT->Macro( "/home/mikhail/ris2/macro/style.cc" );
   std::string file_vf = "~/Flow/BM@N/vf.2024.02.12.root";
   
-  Wrap<Correlation> container{
+  Systematics<Correlation> container{
     "proton"s,
     file_vf, std::vector<std::string>{
           "proton/v1.F1_RESCALED(F3_RESCALED,Tpos_RESCALED).y1y1centrality",
@@ -19,8 +19,8 @@ void example(){
           "proton/v1.F3_RESCALED(F1_RESCALED,Tneg_RESCALED).y1y1centrality",
     }
   };
-  container.SetStyle( Style().SetMarker(kFullCircle).SetColor(kBlue+2) );
-  container->Rebin( { {"centrality", 1, 10, 30}, { "trPt", 1, 0.2, 1.4 } } )
+  container->SetStyle( Style().SetMarker(kFullCircle).SetColor(kBlue+2) );
+  container.operator->()->operator->()->Rebin( { {"centrality", 1, 10, 30}, { "trPt", 1, 0.2, 1.4 } } )
             .Project({"trProtonY"});
 
   auto plot = Plot( {1000, 1100} );

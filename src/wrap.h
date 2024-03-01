@@ -1,22 +1,26 @@
 #ifndef WRAP_H
 #define WRAP_H
 
-#include <Axis.hpp>
-#include <DataContainerHelper.hpp>
-#include <RtypesCore.h>
-#include <TGraphErrors.h>
-#include <bits/fs_fwd.h>
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <queue>
 #include <stdexcept>
 #include <string>
-#include <TGraph.h>
-#include <TFile.h>
-#include <DataContainer.hpp>
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <bits/fs_fwd.h>
+#include <algorithm>
+
+#include <RtypesCore.h>
+#include <TGraphErrors.h>
+#include <TGraph.h>
+#include <TFile.h>
+
+#include <DataContainer.hpp>
+#include <DataContainerHelper.hpp>
+#include <Axis.hpp>
 
 struct Style{
   Style(){}
@@ -87,6 +91,34 @@ private:
   Style style_{};
 };
 
+template<class T>
+class Systematics{
+public:
+  template<typename... Args>
+  Systematics<T>( Args... args ) : object_(args...) {}
+  TGraph* GetSystematics(){ if(!systamatics_) UpdatePoints(); return systamatics_.get(); }
+  TGraph* ReleaseSystematics(){ if(!systamatics_) UpdatePoints(); return systamatics_.release(); }
+  void UpdatePoints(){
+    object_.UpdatePoints();
+    systamatics_.reset( object_->GetSystematics() );
+    systamatics_->SetLineColor( object_.GetStyle().color_ );
+    if( object_.GetStyle().marker_ >= 0 ){
+      systamatics_->SetMarkerStyle( object_.GetStyle().marker_ );
+      systamatics_->SetMarkerColor( object_.GetStyle().color_ );
+    } else {
+      systamatics_->SetLineStyle( abs(object_.GetStyle().marker_) );
+    }
+    systamatics_->SetFillColorAlpha(object_.GetStyle().color_, 0.1);
+  }
+  Wrap<T>* operator->(){
+    return &object_;
+  }
+
+private:
+  Wrap<T> object_;
+  std::unique_ptr<TGraph> systamatics_;
+};
+
 class Correlation{
 public:
   Correlation() = default;
@@ -114,48 +146,81 @@ public:
       correlations.push( Qn::DataContainerStatCalculate(*ptr)*weight );
       ++i;
     }
-    correlation_ = correlations.front();
+    average_ = correlations.front();
+    averaging_objects_.emplace_back( average_ );
     correlations.pop();
     auto* list_merge = new TList;
     while( !correlations.empty() ) {
       auto* to_merge = new Qn::DataContainerStatCalculate( correlations.front() );
       list_merge->Add(to_merge);
+      averaging_objects_.emplace_back( correlations.front() );
       correlations.pop();
     }
-    correlation_.Merge(list_merge);
+    average_.Merge(list_merge);
     
   }
-  Correlation( Qn::DataContainerStatCalculate corr ) : correlation_{ std::move(corr) } {}
+  Correlation( Qn::DataContainerStatCalculate corr ) : average_{ std::move(corr) } {}
   Correlation(const Correlation& ) = default;
   Correlation& operator=(const Correlation& ) = default;
   Correlation(Correlation&& ) = default;
   Correlation& operator=(Correlation&& ) = default;
   ~Correlation() = default;
   TGraphErrors* GetPoints() {
-    correlation_.SetErrors(Qn::Stat::ErrorType::BOOTSTRAP);
-    auto graph = Qn::ToTGraph( correlation_ );
+    average_.SetErrors(Qn::Stat::ErrorType::BOOTSTRAP);
+    auto graph = Qn::ToTGraph( average_ );
+    return graph;
+  }
+  TGraphErrors* GetSystematics(){
+    auto graph = Qn::ToTGraph( average_ );
+    std::vector<Qn::DataContainerStatCalculate> variations;
+    for( const auto& cont : averaging_objects_ ){
+      variations.emplace_back( average_ - cont );
+    }
+    for( size_t i=0; i<graph->GetN(); ++i ){
+      auto x_hi = average_.GetAxes().front().GetUpperBinEdge(i);
+      auto x_lo = average_.GetAxes().front().GetLowerBinEdge(i);
+      auto x_err = fabs( x_hi - x_lo ) / 4;
+      std::vector<double> vec_variations;
+      auto y_err = fabs(variations.front().At(i).Mean());
+      for( const auto& cont : variations ){
+        auto err = fabs( cont.At(i).Mean() );
+        if( y_err < err )
+          y_err=err;
+      }
+      graph->SetPointError( i, x_err, y_err );
+    }
     return graph;
   }
   Correlation& Scale(double scale){
-    correlation_ = correlation_ * scale;
+    average_ = average_ * scale;
+    for( auto& corr : averaging_objects_ ){
+      corr = corr*scale;
+    }
     return *this;
   }
   Correlation& Rebin( const std::vector<Qn::AxisD>& axes ){
     for( const auto& axis : axes ){
-      correlation_ = correlation_.Rebin(axis);
+      average_ = average_.Rebin(axis);
+      for( auto& corr : averaging_objects_ ){
+        corr = corr.Rebin( axis );
+      }
     }
     return *this;
   }
   Correlation& Project( const std::vector<std::string>& axes ){
-    correlation_ = correlation_.Projection( axes );
+    average_ = average_.Projection( axes );
+    for( auto& corr : averaging_objects_ ){
+        corr = corr.Projection( axes );
+    }
     return *this;
   }
   Correlation Divide( const Correlation& other ) const {
-    auto result_correlation = correlation_ / other.correlation_;
+    auto result_correlation = average_ / other.average_;
     return Correlation(result_correlation);
   }
 private:
-  Qn::DataContainerStatCalculate  correlation_{};
+  Qn::DataContainerStatCalculate  average_{};
+  std::vector<Qn::DataContainerStatCalculate>  averaging_objects_{};
 };
 
 class Histogram{

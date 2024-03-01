@@ -67,6 +67,33 @@ public:
       graph_stack_->Add( wrap.ReleasePoints(), "L" ); 
     return *this; 
   }
+  template<typename T>
+  Picture& AddToPlot( Systematics<T>& wrap ){ 
+    auto style = wrap->GetStyle();
+    if( style.marker_ >= 0 ){
+      graph_stack_->Add( wrap->ReleasePoints(), "P" ); 
+      graph_stack_->Add( wrap.ReleaseSystematics(), "P+2" ); 
+    }
+    if( style.marker_ < 0 ){
+      graph_stack_->Add( wrap->ReleasePoints(), "L" ); 
+      graph_stack_->Add( wrap.ReleaseSystematics(), "L+2" ); 
+    }
+    return *this; 
+  }
+  template<typename T>
+  Picture& AddToPlot( std::vector<Wrap<T>>& bunch ){
+    std::for_each( bunch.begin(), bunch.end(), [this]( Wrap<T>& obj ){ 
+      if( obj.GetStyle().marker_ >= 0 )
+        graph_stack_->Add( obj.ReleasePoints(), "P" ); 
+      if( obj.GetStyle().marker_ < 0 )
+        graph_stack_->Add( obj.ReleasePoints(), "L" ); 
+      if( obj.GetFit() ){
+        functions_.emplace_back(std::unique_ptr<TF1>( obj.GetFit()) );
+      }
+    } );    
+    return *this;
+  }
+
   Picture& SetResolution( std::vector<double> aspect_ratio ){
     auto rd = std::random_device{};
     auto re = std::mt19937{rd()};
@@ -81,19 +108,6 @@ public:
   }
   Picture& SetXAxis( Axis axis ){ x_axis_ = axis; return *this; }
   Picture& SetYAxis( Axis axis ){ y_axis_ = axis; return *this; }
-  template<typename T>
-  Picture& AddToPlot( std::vector<Wrap<T>>& bunch ){
-    std::for_each( bunch.begin(), bunch.end(), [this]( Wrap<T>& obj ){ 
-      if( obj.GetStyle().marker_ >= 0 )
-        graph_stack_->Add( obj.ReleasePoints(), "P" ); 
-      if( obj.GetStyle().marker_ < 0 )
-        graph_stack_->Add( obj.ReleasePoints(), "L" ); 
-      if( obj.GetFit() ){
-        functions_.emplace_back(std::unique_ptr<TF1>( obj.GetFit()) );
-      }
-    } );    
-    return *this;
-  }
   Picture& AddText( Text text ) {
     texts_.emplace_back(std::move(text));
     return *this;
