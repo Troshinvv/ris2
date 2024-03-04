@@ -23,9 +23,23 @@
 #include <Axis.hpp>
 
 struct Style{
-  Style(){}
+  Style() = default;
+  ~Style() = default;
+  Style( const Style& ) = default;
+  Style( Style&& ) = default;
+  Style& operator=( const Style& ) = default;
+  Style& operator=( Style&& ) = default;
   Style& SetColor( int color ){ color_ = color; return *this; }
   Style& SetMarker( int marker ){ marker_ = marker; return *this; }
+  Style& operator()( TGraph* points){
+    points->SetLineColor(color_);
+    points->SetMarkerColor(color_);
+    if( marker_ >= 0 )
+      points->SetMarkerStyle(marker_);
+    if( marker_ < 0 )
+      points->SetLineStyle( abs(marker_) );
+    return *this;
+  }
   int color_{kBlack};
   int marker_{kFullCircle};
 };
@@ -58,9 +72,9 @@ public:
     return &obj_;
   }
   const std::string& GetTitle() const { return title_; }
-  Wrap& Fit( TF1* function ){
+  Wrap& Fit( TF1* function, std::array<double, 2> range = {} ){
     UpdatePoints();
-    points_->Fit( function );
+    points_->Fit( function, "B", "", range[0], range[1] );
     auto fitted = dynamic_cast<TF1*>(points_->GetListOfFunctions()->First());
     function->SetLineColor( style_.color_ );
     fit_ = function;
@@ -69,33 +83,48 @@ public:
   TGraph* ReleasePoints(){ UpdatePoints(); return points_.release(); }
   TF1* GetFit() { return fit_; };
   Wrap& SetStyle( Style style ){ style_ = std::move(style); return *this; }
+  TGraph* GetPoints(){  if(!points_) UpdatePoints(); return points_.get(); }
   void UpdatePoints(){ 
     if( !points_ )
       points_.reset( obj_.GetPoints() );
-    points_->SetLineColor(style_.color_);
-    points_->SetMarkerColor(style_.color_);
-    if( style_.marker_ >= 0 )
-      points_->SetMarkerStyle(style_.marker_);
-    if( style_.marker_ < 0 )
-      points_->SetLineStyle( abs(style_.marker_) );
+    style_( points_.get() );
   }
   const Style& GetStyle() const { return style_; }
+  Wrap<T>& SetTitle( std::string title ){ title_ = std::move(title); return *this; }
   Wrap<T> Divide( const Wrap<T>& other) const {
     return Wrap<T>{ obj_.Divide( other.obj_ ) };
   }
 private:
-  T obj_;
+  T obj_{};
   std::string title_{};
   std::unique_ptr<TGraph> points_{};
   TF1* fit_{nullptr};
   Style style_{};
 };
 
+
+
 template<class T>
 class Systematics{
 public:
   template<typename... Args>
   Systematics<T>( Args... args ) : object_(args...) {}
+  Systematics<T>(const Systematics<T>& other) : 
+    systamatics_( nullptr ), 
+    object_(other.object_) {}
+  Systematics<T>(Systematics<T>&& other) : 
+    systamatics_( nullptr ), 
+    object_(std::move(other.object_)) {}
+  Systematics<T>& operator=(const Systematics<T>& other){
+    systamatics_.reset(), 
+    object_ = other.object_;
+  }
+  Systematics<T>& operator=(Systematics<T>&& other){
+    systamatics_.reset(), 
+    object_ = other.object_;
+  }
+  TGraph* GetPoints(){ return object_.GetPoints(); }
+  TGraph* ReleasePoints(){ return object_.ReleasePoints(); }
   TGraph* GetSystematics(){ if(!systamatics_) UpdatePoints(); return systamatics_.get(); }
   TGraph* ReleaseSystematics(){ if(!systamatics_) UpdatePoints(); return systamatics_.release(); }
   void UpdatePoints(){
@@ -109,6 +138,11 @@ public:
       systamatics_->SetLineStyle( abs(object_.GetStyle().marker_) );
     }
     systamatics_->SetFillColorAlpha(object_.GetStyle().color_, 0.1);
+  }
+  void SetStyle(Style style){ object_.SetStyle(style); }
+  
+  Wrap<T>& operator*(){
+    return object_;
   }
   Wrap<T>* operator->(){
     return &object_;
@@ -170,6 +204,13 @@ public:
     auto graph = Qn::ToTGraph( average_ );
     return graph;
   }
+  std::vector<std::unique_ptr<TGraphErrors>> GetAveragingPoints(){
+    std::vector<std::unique_ptr<TGraphErrors>> vec_graphs{};
+    for( auto& obj : averaging_objects_ ){
+      vec_graphs.emplace_back( Qn::ToTGraph( obj ) );
+    }
+    return vec_graphs;
+  }
   TGraphErrors* GetSystematics(){
     auto graph = Qn::ToTGraph( average_ );
     std::vector<Qn::DataContainerStatCalculate> variations;
@@ -179,7 +220,7 @@ public:
     for( size_t i=0; i<graph->GetN(); ++i ){
       auto x_hi = average_.GetAxes().front().GetUpperBinEdge(i);
       auto x_lo = average_.GetAxes().front().GetLowerBinEdge(i);
-      auto x_err = fabs( x_hi - x_lo ) / 4;
+      auto x_err = fabs( x_hi - x_lo ) / 6;
       std::vector<double> vec_variations;
       auto y_err = fabs(variations.front().At(i).Mean());
       for( const auto& cont : variations ){
@@ -225,6 +266,7 @@ private:
 
 class Histogram{
 public:
+  Histogram() = default;
   Histogram( 
     const std::string& str_file_name, 
     const std::vector<std::string>& vec_objects )
@@ -289,6 +331,8 @@ private:
 };
 
 class Graph{
+public:
+  Graph() = default;
   Graph( std::string str_file_name, std::string str_obj ){
     auto file = std::make_unique<TFile>( str_file_name.c_str(), "READ" );
     TGraph* ptr{nullptr};
@@ -297,6 +341,8 @@ class Graph{
   }
   Graph( const Histogram&  histogram ) : graph_{ std::unique_ptr<TGraphErrors>( dynamic_cast<TGraphErrors*>( histogram.GetPoints() ) )}{ }
   Graph( Correlation&  correlation ) : graph_ {std::unique_ptr<TGraphErrors>( dynamic_cast<TGraphErrors*>( correlation.GetPoints() ) )}{ }
+  Graph& SetPoints( TGraphErrors* points ){ graph_.reset(points); return *this; }
+  TGraphErrors* GetPoints(){ return dynamic_cast<TGraphErrors*>(graph_.get()->Clone()); }
   Graph& Scale(double scale){
     for( size_t i=0; i<graph_->GetN(); ++i ){
       auto x = graph_->GetPointX(i);

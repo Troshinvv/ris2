@@ -81,7 +81,7 @@ public:
     return bunch_; 
   }
   template<typename Func>
-  Wrap<T>& operator()( Func function ){ std::for_each( bunch_.begin(), bunch_.end(), function ); return *this; }
+  Bunch& operator()( Func function ){ std::for_each( bunch_.begin(), bunch_.end(), function ); return *this; }
   Wrap<T>& operator[]( size_t idx ){ return bunch_.at(idx); }
   TLegend* MakeLegend(std::vector<double> position = {}){
     std::vector<std::string> bunch_titles_;
