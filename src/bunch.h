@@ -8,18 +8,31 @@
 #include <TLegend.h>
 #include <TMultiGraph.h>
 #include <algorithm>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
-namespace {
+namespace ris2{
 
 class Palette{
 public:
+  class VectorOfStylesIsOutOfRange : public std::exception{
+  public:
+    VectorOfStylesIsOutOfRange( size_t req_idx) {
+      error_message_ = std::string("Required index ").append( std::to_string(req_idx) ).append(" is out of range of vector of styles");
+    }
+    const char* what() const noexcept override {
+      return error_message_.c_str();
+    }
+  private:
+    std::string error_message_{};
+  };
   Palette() = default;
   ~Palette() = default;
   
@@ -29,7 +42,11 @@ public:
   void PaintObjects( std::vector< Wrap<T> >& objects ) const { 
     std::for_each( objects.begin(), objects.end(), 
     [this, i=0]( auto& obj ) mutable {
-      obj.SetStyle( styles_.at(i) );
+      try{
+        obj.SetStyle( styles_.at(i) );
+      } catch( std::out_of_range ){
+        throw VectorOfStylesIsOutOfRange(i);
+      }
       ++i;
     } ); 
   }

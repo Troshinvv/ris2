@@ -15,10 +15,14 @@
 #include <StatCollect.hpp>
 #include <Axis.hpp>
 
+/// @brief This file contents the elementary classes used to represent common interfaca for ROOT classes
+/// Wrap is the interface for drawable classes
+
+namespace ris2{
+
 using Correlation = Qn::DataContainerStatCalculate;
 using Histogram = TH1;
 using Graph = TGraphErrors;
-namespace {
 
 class CannotOpenAFile : public std::exception{ 
 public:
@@ -50,6 +54,9 @@ private:
   std::string err_message_{};
 };
 
+/** 
+* @brief Style class is used to set and store information about draw style
+**/
 struct Style{
   Style() = default;
   ~Style() = default;
@@ -68,7 +75,7 @@ struct Style{
       points->SetLineStyle( abs(marker_) );
     return *this;
   }
-  int color_{kBlack};
+  int color_{kBlack}; 
   int marker_{kFullCircle};
 };
 
@@ -95,6 +102,8 @@ public:
   template<typename... Args>
   Systematics( Args... args ){}
   ~Systematics() = default;
+  template<typename... Args>
+  Systematics<T>& AddToSystematics( Args... args ){ return *this; }
   TGraphErrors* GetPoints(){ return nullptr; }
   template<typename... Args>
   Systematics<T>& Rebin(Args... args){ return *this; }

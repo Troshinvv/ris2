@@ -22,6 +22,7 @@
 #include "wrap.h"
 #include "bunch.h"
 
+namespace ris2 {
 struct Axis{
   Axis() = default;
   Axis& SetTitle( std::string title ){ title_ = std::move(title); return *this; }
@@ -215,8 +216,5 @@ protected:
   std::unique_ptr<TCanvas> canvas_{};
 };
 
-class RatioPlot : public Plot{
-  
-};
-
+}
 #endif // PICTURE_H
