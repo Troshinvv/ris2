@@ -15,9 +15,6 @@
 #include <StatCollect.hpp>
 #include <Axis.hpp>
 
-/// @brief This file contents the elementary classes used to represent common interfaca for ROOT classes
-/// Wrap is the interface for drawable classes
-
 namespace ris2{
 
 using Correlation = Qn::DataContainerStatCalculate;
@@ -55,7 +52,7 @@ private:
 };
 
 /** 
-* @brief Style class is used to set and store information about draw style
+* @brief Style class is used to set and store information about object draw style
 **/
 struct Style{
   Style() = default;
@@ -64,7 +61,9 @@ struct Style{
   Style( Style&& ) noexcept = default;
   Style& operator=( const Style& ) = default;
   Style& operator=( Style&& ) noexcept = default;
+  /// @param color color of the object
   Style& SetColor( int color ){ color_ = color; return *this; }
+  /// @param marker is the marker syle of the object; positive is for marker style, negative is for line style 
   Style& SetMarker( int marker ){ marker_ = marker; return *this; }
   Style& operator()( TGraphErrors* points) {
     points->SetLineColor(color_);
@@ -75,10 +74,12 @@ struct Style{
       points->SetLineStyle( abs(marker_) );
     return *this;
   }
-  int color_{kBlack}; 
+  int color_{kBlack};
   int marker_{kFullCircle};
 };
 
+/// @brief Dummy class for operating and storing the drawable object and pull the result in the form of TGraph object
+/// @param T is a type of drawable object. Supported for TH1*, Qn::DataContainerStatCalculate and TGraph
 template<typename T> 
 class Result{
 public:
@@ -86,15 +87,22 @@ public:
   template<typename... Args>
   Result( Args... args ){}
   ~Result() = default;
+  /// @brief Function for extracting the result points in the form of TGraph. Specialized for each type of storing objects
   TGraphErrors* GetPoints(){ return nullptr; }
   template<typename... Args>
+  /// @brief Function for rebinning the underlying object. Specialized for each type of storing objects
   Result<T>& Rebin(Args... args){ return *this; }
   template<typename... Args>
+  /// @brief Function for projecting object on one of the axes. Specialized for each type of storing objects
   Result<T>& Project(Args... args){ return *this; }
+  /// @brief Function for scaling object. Specialized for each type of storing objects
   Result<T>& Scale( double scale ){ return *this; }
+  /// @brief Function used for building ratios. Specialized for each type of storing objects
   Result<T>& Divide( const Result<T> other ) const { return Result<T>{}; }
 };
 
+/// @brief Dummy class for calculating the systematical variation
+/// @param T is a type of drawable object. Supported for TH1*, Qn::DataContainerStatCalculate
 template<typename T> 
 class Systematics{ 
 public:
@@ -112,61 +120,90 @@ public:
   Systematics<T>& Scale( double scale ){ return *this; }
 };
 
+/// @brief Interface class for manipulating the drawable object.
+/// @param T is a type of drawable object. Supported for TH1*, Qn::DataContainerStatCalculate and TGraphErrors*
 template<typename T>
 class Wrap{
 public:
+  /// @brief A default constructor with no arguments
   Wrap<T>() = default;
+  /// @brief A constuctor initializing the underlying object
+  /// @param title is the title of the data points
+  /// @param Args for Correlation: std::string file_name, std::vector<std::string>> objects, std::vector<double> weights
+  /// @param Args for Histogram: std::string file_name, std::vector<std::string>> objects
+  /// @param Args for Graph: std::string file_name, std::string> object
   template<typename... Args>
   Wrap<T>( std::string title, Args... args ) : title_{title}, result_{ args... }, systematics_(args...) {  }
-  Wrap<T>( const T& obj ) : result_{ obj }, systematics_(obj) {  }
+  /// @brief Contructor wrapping the pointer to the object. Written for Wrap<Graph> initialization with custom graph.
   Wrap<T>( T* obj ) : result_{ obj }, systematics_(obj) {  }
+  /// @brief default destructor
   ~Wrap<T>() = default;
+  /// @brief A copy constructor. Copies the underlying objects.
   Wrap<T>( const Wrap<T>& other ) : 
     result_(other.result_), 
     systematics_(other.systematics_),
     style_(other.style_),
     title_(other.title_) {  }
+  /// @brief A copy assignement operator. Copies the underlying objects.
   Wrap<T> operator=( const Wrap<T>& other ) { 
     result_ = other.result_;
     systematics_ = other.systematics_;
     style_ = other.style_;
     title_ = other.title_;
+    result_points_.reset();
+    sys_error_points_.reset();
     return *this;
   }
+  /// @brief A move constructor. Moves the underlying objects.
   Wrap<T>( Wrap<T>&& other ) noexcept : 
     result_(std::move(other.result_)), 
     systematics_(std::move(other.systematics_)),
     style_(std::move(other.style_)), 
     title_(std::move(other.title_)) {  }
+  /// @brief A move assignement operator. Moves the underlying objects.
   Wrap<T> operator=( Wrap<T>&& other ) noexcept { 
     result_ = std::move(other.result_);
     systematics_ = std::move(other.systematics_);
     style_ = std::move(other.style_);
     title_ = std::move(other.title_);
+    result_points_.reset();
+    sys_error_points_.reset();
     return *this;
   }
-  TGraphErrors* GetResult(){ UpdatePoints(); return result_points_.get(); }
+  /// @brief Returns the result in the form TGraphErrors but keeps owning the object.
+  TGraphErrors* GetResult() const { UpdatePoints(); return result_points_.get(); }
+  /// @brief Releases the result points. Memory management is handled to the caller.
   TGraphErrors* ReleaseResult(){ UpdatePoints(); return result_points_.release(); }
-  TGraphErrors* GetSystematics(){ UpdatePoints(); return sys_error_points_.get(); }
+  /// @brief Returns the systematics in the form TGraphErrors but keeps owning the object.
+  TGraphErrors* GetSystematics() const { UpdatePoints(); return sys_error_points_.get(); }
+  /// @brief Releases the systematic points. Memory management is handled to the caller.
   TGraphErrors* ReleaseSystematics(){ UpdatePoints(); return sys_error_points_.release(); }
-  Wrap<T>& SetResult( Result<T> res ){ result_ = std::move(res); };
-  Wrap<T>& SetSystematics( Systematics<T> sys ){ systematics_ = std::move(sys); };
+  /// @brief For delayed initialization of the Wrap
+  Wrap<T>& SetResult( Result<T> res ){ result_ = std::move(res); result_points_.reset(); };
+  /// @brief For delayed initialization of the Wrap
+  Wrap<T>& SetSystematics( Systematics<T> sys ){ systematics_ = std::move(sys); sys_error_points_.reset(); };
   const Style& GetStyle(){ return style_; }
   Wrap<T>& SetStyle( Style style ){ style_ = std::move(style); return *this; }
   const std::string& GetTitle() const { return title_; }
   Wrap<T>& SetTitle( std::string title ){ title_ = std::move(title); return *this; }
   template<typename... Args> 
+  /// @brief Performs the rebinning of the underlying object. Supported only for Correlation and Histogram
+  /// @param Args has std::vector<Qn::AxisD> type for Correlation
+  /// @param Args has size_t type for Correlation
   Wrap<T>& Rebin( Args... args ){
     result_.Rebin( args... );
     systematics_.Rebin( args... );
     return *this;
   }
+  /// @brief Performs the rebinning of the underlying object. Supported only for Correlation.
+  /// @param Args has std::vector<Qn::AxisD> type for Correlation
   template<typename... Args> 
   Wrap<T>& Project( Args... args ){
     result_.Project( args... );
     systematics_.Project( args... );
     return *this;
   }
+  /// @brief Scaling the underlying objects. Supported for all three types.
   Wrap<T>& Scale( double scale ){
     result_.Scale(scale);
     systematics_.Scale(scale);

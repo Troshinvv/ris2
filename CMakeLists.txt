@@ -15,5 +15,7 @@ set( QnTools_LIB_PATH QnTools::Base )
 set( QnTools_INCLUDE_PATH ${QnTools_INCLUDE_DIR}/QnTools )
 configure_file(src/main.cc.in ${CMAKE_SOURCE_DIR}/src/main.cc @ONLY)
 
+configure_file(docs/Doxyfile.in ${CMAKE_SOURCE_DIR}/docs/Doxyfile @ONLY)
+
 add_executable(draw src/main.cc)
 target_link_libraries(draw PRIVATE QnTools::Base ROOT::Tree ROOT::RIO ROOT::MathMore )

@@ -20,8 +20,12 @@
 
 namespace ris2{
 
+/// @brief Classes for working with the number of drawable objects all at ones.
+
+/// @brief A class for handling the painting job
 class Palette{
 public:
+  /// @brief An exception thrown in the case of number of number of objects to paint is greater then the number of styles availiable
   class VectorOfStylesIsOutOfRange : public std::exception{
   public:
     VectorOfStylesIsOutOfRange( size_t req_idx) {
@@ -81,32 +85,50 @@ protected:
   std::vector<Style> styles_{};
 };
 
+/// @brief A class wrapping the std::vector<Wrap<T>>.
 template<typename T>
 class Bunch {
 public:
+  /// @brief Default constructor
   Bunch<T>() = default;
+  /// @brief Copy constructor
   Bunch<T>( const Bunch<T>& other) = default;
+  /// @brief Move constructor
   Bunch<T>( Bunch<T>&& other) = default;
+  /// @brief Copy assignment operator
   Bunch<T>& operator=( const Bunch<T>& other) = default;
+  /// @brief Move assignment operator
   Bunch<T>& operator=( Bunch<T>&& ) = default;
-
+  /// @brief Default destructor
   ~Bunch<T>() = default;
 
+  /// @brief Constructs and places the value to the end of the underlying vector
+  /// @param Args are forwarded to the constructor of Wrap<T>. See the documentation for Wrap<T>
   template<typename... Args>
   Bunch& AddToBunch( std::string title, Args... args ){ 
     bunch_.emplace_back( title, args... ); 
     return *this;
   }
+  /// @brief Getter for the palette
   Palette& GetPalette() { return palette_; }
+  /// @brief Function to perform an action on all the ellements of the underlyind std::vector<Wrap<T>>
+  /// @param function function to perform on each Wrap<T>. The function should have void return type
   template<typename Func>
   Bunch& Perform( Func function ){ std::for_each( bunch_.begin(), bunch_.end(), function ); return *this; }
+  /// @brief Function to access the underlying vector of Wrap<T>
   std::vector<Wrap<T>>& operator*(){
     palette_.PaintObjects(bunch_);
     return bunch_; 
   }
+  /// @brief Same as Perform. Added for brievity. 
+  /// @param function function to perform on each Wrap<T>. The function should have void return type
   template<typename Func>
   Bunch& operator()( Func function ){ std::for_each( bunch_.begin(), bunch_.end(), function ); return *this; }
+  /// @brief Function for index access to the underlying vector of Wrap<T>
   Wrap<T>& operator[]( size_t idx ){ return bunch_.at(idx); }
+  /// @brief Creates the legend using the titles and styles of the Wrap<T> placed to the vector.
+  /// @param position Coordinates of the bottom-left and up-right corners of the legend on the canvas { x1, y1, x2, y2 }. 
+  /// Relative positioning is used (i.e. coordinates from 0 to 1). 
   TLegend* MakeLegend(std::vector<double> position = {}){
     std::vector<std::string> bunch_titles_;
     std::for_each( bunch_.begin(), bunch_.end(), [&bunch_titles_]( const Wrap<T>& obj ) mutable { 
@@ -121,33 +143,51 @@ private:
   std::vector< Wrap<T> > bunch_{};
 };
 
+/// @brief A class to automatically plot double-differential results
+/// Draws the projectin on the required axis in narrow bins of the second axis
 class DoubleDifferential {
 public:
+  /// @brief Default constructor
   DoubleDifferential() = delete;
+  /// @brief Constructor initializing the Wrap<Correlation> which will be sliced
+  /// @param title can be leaved empty. 
+  /// @param Args is a param pack for Result<Correlation> construction
   template<typename ...Args>
   DoubleDifferential(std::string title, Args... args) : base_correlation_{ title, args... }{ }
+  /// @brief Copy constructor
   DoubleDifferential( const DoubleDifferential& ) = default;
+  /// @brief Copy assignment operator
   DoubleDifferential& operator=( const DoubleDifferential& ) = default;
+  /// @brief Move constructor
   DoubleDifferential( DoubleDifferential&& ) = default;
+  /// @brief Move assignment operator
   DoubleDifferential& operator=( DoubleDifferential&& ) = default;
+  /// @brief Default destructor
   ~DoubleDifferential() = default;
+  /// @brief Function to perform on the underlying Wrap<Correlation>
+  /// @param func should have the return-type void
   template<typename Func>
   DoubleDifferential& Perform( const Func& function ){ 
     function( base_correlation_ ); 
     return *this; 
   }
+  /// @brief Same function as perform for brievity 
   template<typename Func>
   DoubleDifferential& operator()( const Func& function ){ 
     function( base_correlation_ ); 
     return *this; 
   }
   Palette& GetPalette(){ return palette_; }
+  DoubleDifferential& SetPalette( const std::vector<Style>& styles ){ palette_.SetPalette(styles); return *this; }
+  /// @brief Setter for the axis in bins of which the correlation will be projected on the projection axis 
   DoubleDifferential& SetSliceAxis(Qn::AxisD slie_axis){ slice_axis_ = std::move(slie_axis); return *this; }
+  /// @brief Setter for the axis on which the correlation will be projected in the bins of slice axis 
   DoubleDifferential& SetProjectionAxis(Qn::AxisD projection_axis){ projection_axis_ = std::move(projection_axis); return *this; }
-  DoubleDifferential& SetPalette( const std::vector<Style>& styles ){
-    palette_.SetPalette(styles);
-    return *this;
-  }
+  /// @brief Creates the legend out of all the slices.
+  /// @param slice_var text description of the values on the slice axis
+  /// @param slice_var units of measure of the slice axis
+  /// @param position Coordinates of the bottom-left and up-right corners of the legend on the canvas { x1, y1, x2, y2 }. 
+  /// Relative positioning is used (i.e. coordinates from 0 to 1). 
   TLegend* MakeLegend(const std::string& slice_var, const std::string& units="", std::vector<double> position = {} ){
     auto bin_edges = slice_axis_.GetBinEdges();
     std::vector<std::string> captions{};
@@ -158,6 +198,7 @@ public:
     }
     return palette_.MakeLegend( captions, position );
   }
+  /// @brief returns the result slices
   std::vector<Wrap<Correlation>>& operator*(){
     if( result_correlations_.empty() )
       Slice();
@@ -188,33 +229,49 @@ private:
   Qn::AxisD projection_axis_{};
 };
 
+/// @brief Class to create the ratio plots.
+/// Used for systematic checks. The ratio is built with respect to one of the selected values.
 template<typename T>
 class RatioBuilder {
 public:
+  /// @brief default constructor
+  RatioBuilder<T>() = delete;
+  /// @brief Constructor intializing the reference value with respect to which the ratios will be built.
+  /// @param title is the title used for creating the legend
+  /// @param args is a parameter pack to initialize the underlying Result<T>
   template<typename... Args>
   RatioBuilder( std::string title, Args... args ) {
     results_.emplace_back( args... );
     titles_.emplace_back( std::move(title) );
   }
+  /// @brief Default constuctor
   ~RatioBuilder() = default;
+  /// @brief Function to add the object which the ratio will be built for
+  /// @param title is the title used for creating the legend
+  /// @param args is the parameter pack to initialize the Result<T>
   template<typename ...Args>
   RatioBuilder& AddToBunch( std::string title, Args... args ){ 
     titles_.emplace_back( title );
     results_.emplace_back( args...); 
     return *this; 
   }
+  /// @brief Returns the Result<T> objects for which the ratios are built
   std::vector<Result<T>>& GetResults(){
     return results_;
   }
+  /// @brief Returns the Result<T> objects containing the ratios
   std::vector<Result<T>>& GetRatios(){
     BuildRatios();
     return ratios_;
   }
+  /// @brief Function to perform the action (projection/rebin/scale, etc.) on all the objects for which the ratios will be built.
+  /// @param function accepts Ratio<T>& as a parameter and returns nothing.
   template<typename Func>
   RatioBuilder<T>& Perform( const Func& function ){ 
     std::for_each( results_.begin(), results_.end(), function ); 
     return *this; 
   }
+  /// @brief Same as Perform-function.
   template<typename Func>
   RatioBuilder<T>& operator()( const Func& function ){ 
     std::for_each( results_.begin(), results_.end(), function ); 
@@ -224,13 +281,20 @@ public:
     palette_.SetPalette(corr_styles);
     return *this;
   }
+  /// @brief Returns the reference Result<T> relative to which the ratios are built 
   Result<T>& GetReference(){ return results_.front(); }
+  /// @brief Creates the legend out of all the slices.
+  /// @param position Coordinates of the bottom-left and up-right corners of the legend on the canvas { x1, y1, x2, y2 }. 
+  /// Relative positioning is used (i.e. coordinates from 0 to 1). 
   TLegend* MakeLegend( std::vector<double> position = {} ){
     auto leg = palette_.MakeLegend(titles_, position);
     return leg;
   }
+  /// @brief Returns the number of Ratio<T> for which the ratios will be built 
   size_t Size() const { return results_.size(); }
+  /// @brief Returns the points for which the ratios are built 
   std::vector<Wrap<TGraphErrors>>& GetResultWraps(){ UpdatePoints(); return result_points_; }
+  /// @brief Returns the points of the ratios 
   std::vector<Wrap<TGraphErrors>>& GetRatioWraps(){ UpdatePoints(); return ratio_points_; }
 private:
   void BuildRatios(){
