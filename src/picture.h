@@ -129,7 +129,7 @@ public:
     graph_stack_->SetTitle(axis_titles.c_str());
     graph_stack_->Draw("APL");
     if( x_axis_.hi_ > x_axis_.lo_ ){
-      graph_stack_->GetHistogram()->GetXaxis()->SetRangeUser(x_axis_.lo_, x_axis_.hi_);
+      graph_stack_->GetHistogram()->GetXaxis()->SetLimits(x_axis_.lo_, x_axis_.hi_);
       graph_stack_->GetHistogram()->Draw("APL");
     }
     if( y_axis_.hi_ > y_axis_.lo_ ){
