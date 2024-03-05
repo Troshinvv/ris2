@@ -17,7 +17,38 @@
 
 using Correlation = Qn::DataContainerStatCalculate;
 using Histogram = TH1;
+using Graph = TGraphErrors;
 namespace {
+
+class CannotOpenAFile : public std::exception{ 
+public:
+  CannotOpenAFile( std::string file_name ){ 
+    err_message_.append( file_name );
+  }
+  CannotOpenAFile( const CannotOpenAFile& ) = default;
+  CannotOpenAFile( CannotOpenAFile&& ) = default;
+  CannotOpenAFile& operator=( const CannotOpenAFile& ) = default;
+  CannotOpenAFile& operator=( CannotOpenAFile&& ) = default;
+  ~CannotOpenAFile() = default;
+  const char* what() const noexcept override { return err_message_.c_str(); }
+private:
+  std::string err_message_{"Cannot open a file "};
+};
+
+class CannotPullAnObject : public std::exception{ 
+public:
+  CannotPullAnObject( std::string file_name, std::string object ){ 
+    err_message_.append( "Cannot pull an object " ).append( object ).append( " from the file " ).append(file_name);
+  }
+  CannotPullAnObject( const CannotPullAnObject& ) = default;
+  CannotPullAnObject( CannotPullAnObject&& ) = default;
+  CannotPullAnObject& operator=( const CannotPullAnObject& ) = default;
+  CannotPullAnObject& operator=( CannotPullAnObject&& ) = default;
+  ~CannotPullAnObject() = default;
+  const char* what() const noexcept override { return err_message_.c_str(); }
+private:
+  std::string err_message_{};
+};
 
 struct Style{
   Style() = default;
@@ -40,36 +71,6 @@ struct Style{
   int color_{kBlack};
   int marker_{kFullCircle};
 };
-
-class CannotOpenAFile : public std::exception{ 
-  public:
-    CannotOpenAFile( std::string file_name ){ 
-      err_message_.append( file_name );
-    }
-    CannotOpenAFile( const CannotOpenAFile& ) = default;
-    CannotOpenAFile( CannotOpenAFile&& ) = default;
-    CannotOpenAFile& operator=( const CannotOpenAFile& ) = default;
-    CannotOpenAFile& operator=( CannotOpenAFile&& ) = default;
-    ~CannotOpenAFile() = default;
-    const char* what() const noexcept override { return err_message_.c_str(); }
-  private:
-    std::string err_message_{"Cannot open a file "};
-  };
-  
-  class CannotPullAnObject : public std::exception{ 
-  public:
-    CannotPullAnObject( std::string file_name, std::string object ){ 
-      err_message_.append( "Cannot pull an object " ).append( object ).append( " from the file " ).append(file_name);
-    }
-    CannotPullAnObject( const CannotPullAnObject& ) = default;
-    CannotPullAnObject( CannotPullAnObject&& ) = default;
-    CannotPullAnObject& operator=( const CannotPullAnObject& ) = default;
-    CannotPullAnObject& operator=( CannotPullAnObject&& ) = default;
-    ~CannotPullAnObject() = default;
-    const char* what() const noexcept override { return err_message_.c_str(); }
-  private:
-    std::string err_message_{};
-  };
 
 template<typename T> 
 class Result{
@@ -100,6 +101,90 @@ public:
   template<typename... Args>
   Systematics<T>& Project(Args... args){ return *this; }
   Systematics<T>& Scale( double scale ){ return *this; }
+};
+
+template<typename T>
+class Wrap{
+public:
+  Wrap<T>() = default;
+  template<typename... Args>
+  Wrap<T>( std::string title, Args... args ) : title_{title}, result_{ args... }, systematics_(args...) {  }
+  Wrap<T>( const T& obj ) : result_{ obj }, systematics_(obj) {  }
+  Wrap<T>( T* obj ) : result_{ obj }, systematics_(obj) {  }
+  ~Wrap<T>() = default;
+  Wrap<T>( const Wrap<T>& other ) : 
+    result_(other.result_), 
+    systematics_(other.systematics_),
+    style_(other.style_),
+    title_(other.title_) {  }
+  Wrap<T> operator=( const Wrap<T>& other ) { 
+    result_ = other.result_;
+    systematics_ = other.systematics_;
+    style_ = other.style_;
+    title_ = other.title_;
+    return *this;
+  }
+  Wrap<T>( Wrap<T>&& other ) noexcept : 
+    result_(std::move(other.result_)), 
+    systematics_(std::move(other.systematics_)),
+    style_(std::move(other.style_)), 
+    title_(std::move(other.title_)) {  }
+  Wrap<T> operator=( Wrap<T>&& other ) noexcept { 
+    result_ = std::move(other.result_);
+    systematics_ = std::move(other.systematics_);
+    style_ = std::move(other.style_);
+    title_ = std::move(other.title_);
+    return *this;
+  }
+  TGraphErrors* GetResult(){ UpdatePoints(); return result_points_.get(); }
+  TGraphErrors* ReleaseResult(){ UpdatePoints(); return result_points_.release(); }
+  TGraphErrors* GetSystematics(){ UpdatePoints(); return sys_error_points_.get(); }
+  TGraphErrors* ReleaseSystematics(){ UpdatePoints(); return sys_error_points_.release(); }
+  Wrap<T>& SetResult( Result<T> res ){ result_ = std::move(res); };
+  Wrap<T>& SetSystematics( Systematics<T> sys ){ systematics_ = std::move(sys); };
+  const Style& GetStyle(){ return style_; }
+  Wrap<T>& SetStyle( Style style ){ style_ = std::move(style); return *this; }
+  const std::string& GetTitle() const { return title_; }
+  Wrap<T>& SetTitle( std::string title ){ title_ = std::move(title); return *this; }
+  template<typename... Args> 
+  Wrap<T>& Rebin( Args... args ){
+    result_.Rebin( args... );
+    systematics_.Rebin( args... );
+    return *this;
+  }
+  template<typename... Args> 
+  Wrap<T>& Project( Args... args ){
+    result_.Project( args... );
+    systematics_.Project( args... );
+    return *this;
+  }
+  Wrap<T>& Scale( double scale ){
+    result_.Scale(scale);
+    systematics_.Scale(scale);
+    return *this;
+  }
+private:
+  void UpdatePoints(){
+    if( !result_points_ ){
+      result_points_ = std::unique_ptr<TGraphErrors>( result_.GetPoints() );
+    }
+    if( !sys_error_points_ ){
+      sys_error_points_ = std::unique_ptr<TGraphErrors>( systematics_.GetPoints() );
+    }
+    if( result_points_ ){
+      style_( result_points_.get() );
+    }
+    if( sys_error_points_ ){
+      style_( sys_error_points_.get() );
+      sys_error_points_->SetFillColorAlpha(style_.color_, 0.1);
+    }
+  }
+  std::string title_{};
+  Style style_{};
+  Result<T> result_;
+  Systematics<T> systematics_;
+  std::unique_ptr<TGraphErrors> result_points_{};
+  std::unique_ptr<TGraphErrors> sys_error_points_{};
 };
 
 template<>
@@ -430,90 +515,6 @@ public:
   }
 private:
   std::unique_ptr<TGraphErrors> graph_{};
-};
-
-template<typename T>
-class Wrap{
-public:
-  Wrap<T>() = default;
-  template<typename... Args>
-  Wrap<T>( std::string title, Args... args ) : title_{title}, result_{ args... }, systematics_(args...) {  }
-  Wrap<T>( const T& obj ) : result_{ obj }, systematics_(obj) {  }
-  Wrap<T>( T* obj ) : result_{ obj }, systematics_(obj) {  }
-  ~Wrap<T>() = default;
-  Wrap<T>( const Wrap<T>& other ) : 
-    result_(other.result_), 
-    systematics_(other.systematics_),
-    style_(other.style_),
-    title_(other.title_) {  }
-  Wrap<T> operator=( const Wrap<T>& other ) { 
-    result_ = other.result_;
-    systematics_ = other.systematics_;
-    style_ = other.style_;
-    title_ = other.title_;
-    return *this;
-  }
-  Wrap<T>( Wrap<T>&& other ) noexcept : 
-    result_(std::move(other.result_)), 
-    systematics_(std::move(other.systematics_)),
-    style_(std::move(other.style_)), 
-    title_(std::move(other.title_)) {  }
-  Wrap<T> operator=( Wrap<T>&& other ) noexcept { 
-    result_ = std::move(other.result_);
-    systematics_ = std::move(other.systematics_);
-    style_ = std::move(other.style_);
-    title_ = std::move(other.title_);
-    return *this;
-  }
-  TGraphErrors* GetResult(){ UpdatePoints(); return result_points_.get(); }
-  TGraphErrors* ReleaseResult(){ UpdatePoints(); return result_points_.release(); }
-  TGraphErrors* GetSystematics(){ UpdatePoints(); return sys_error_points_.get(); }
-  TGraphErrors* ReleaseSystematics(){ UpdatePoints(); return sys_error_points_.release(); }
-  Wrap<T>& SetResult( Result<T> res ){ result_ = std::move(res); };
-  Wrap<T>& SetSystematics( Systematics<T> sys ){ systematics_ = std::move(sys); };
-  const Style& GetStyle(){ return style_; }
-  Wrap<T>& SetStyle( Style style ){ style_ = std::move(style); return *this; }
-  const std::string& GetTitle() const { return title_; }
-  Wrap<T>& SetTitle( std::string title ){ title_ = std::move(title); return *this; }
-  template<typename... Args> 
-  Wrap<T>& Rebin( Args... args ){
-    result_.Rebin( args... );
-    systematics_.Rebin( args... );
-    return *this;
-  }
-  template<typename... Args> 
-  Wrap<T>& Project( Args... args ){
-    result_.Project( args... );
-    systematics_.Project( args... );
-    return *this;
-  }
-  Wrap<T>& Scale( double scale ){
-    result_.Scale(scale);
-    systematics_.Scale(scale);
-    return *this;
-  }
-private:
-  void UpdatePoints(){
-    if( !result_points_ ){
-      result_points_ = std::unique_ptr<TGraphErrors>( result_.GetPoints() );
-    }
-    if( !sys_error_points_ ){
-      sys_error_points_ = std::unique_ptr<TGraphErrors>( systematics_.GetPoints() );
-    }
-    if( result_points_ ){
-      style_( result_points_.get() );
-    }
-    if( sys_error_points_ ){
-      style_( sys_error_points_.get() );
-      sys_error_points_->SetFillColorAlpha(style_.color_, 0.1);
-    }
-  }
-  std::string title_{};
-  Style style_{};
-  Result<T> result_;
-  Systematics<T> systematics_;
-  std::unique_ptr<TGraphErrors> result_points_{};
-  std::unique_ptr<TGraphErrors> sys_error_points_{};
 };
 
 }
