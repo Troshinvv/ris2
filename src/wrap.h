@@ -105,7 +105,7 @@ public:
 template<>
 class Result<Qn::DataContainerStatCalculate>{
 public:
-  Result<Qn::DataContainerStatCalculate>( std::string str_file_name, std::vector<std::string> objects ){
+  Result<Qn::DataContainerStatCalculate>( std::string str_file_name, std::vector<std::string> objects, std::vector<double> weights = {} ){
     auto file_in = std::make_unique<TFile>( str_file_name.c_str(), "READ" );
     if( !file_in )
       throw CannotOpenAFile( str_file_name );
@@ -115,14 +115,17 @@ public:
     std::queue<Qn::DataContainerStatCalculate> correlations;
     int i=0;
     for( auto name : objects ){
+      auto weight = !weights.empty() ? weights.at(i) : 1.0;
       file_in->GetObject( name.c_str(), ptr_stat_calculate );
       file_in->GetObject( name.c_str(), ptr_stat_collect );
       if( ptr_stat_calculate ){
-        correlations.push( *ptr_stat_calculate );
+        correlations.push( Qn::DataContainerStatCalculate(*ptr_stat_calculate)*weight );
+        i++;
         continue;
       }
       if( ptr_stat_collect ){
-        correlations.push( Qn::DataContainerStatCalculate(*ptr_stat_collect) );
+        correlations.push( Qn::DataContainerStatCalculate(*ptr_stat_collect)*weight );
+        i++;
         continue;
       }
       throw CannotPullAnObject(str_file_name, name);
@@ -175,22 +178,25 @@ private:
 template<>
 class Systematics<Qn::DataContainerStatCalculate>{
 public:
-  Systematics<Qn::DataContainerStatCalculate>( std::string str_file_name, std::vector<std::string> objects ) {
+  Systematics<Qn::DataContainerStatCalculate>( std::string str_file_name, std::vector<std::string> objects, std::vector<double> weights = {}  ) {
     auto file_in = std::make_unique<TFile>( str_file_name.c_str(), "READ" );
     if( !file_in )
       throw CannotOpenAFile( str_file_name );
     Qn::DataContainerStatCalculate* ptr_stat_calculate{nullptr};
     Qn::DataContainerStatCalculate* ptr_stat_collect{nullptr};
-
+    size_t i=0;
     for( auto name : objects ){
+      auto weight = !weights.empty() ? weights.at(i) : 1.0;
       file_in->GetObject( name.c_str(), ptr_stat_calculate );
       file_in->GetObject( name.c_str(), ptr_stat_collect );
       if( ptr_stat_calculate ){
-        averaging_objects_.push_back( *ptr_stat_calculate );
+        averaging_objects_.push_back( Qn::DataContainerStatCalculate(*ptr_stat_calculate)*weight );
+        ++i;
         continue;
       }
       if( ptr_stat_collect ){
-        averaging_objects_.push_back( Qn::DataContainerStatCalculate(*ptr_stat_collect) );
+        averaging_objects_.push_back( Qn::DataContainerStatCalculate(*ptr_stat_collect)*weight );
+        ++i;
         continue;
       }
       throw CannotPullAnObject(str_file_name, name);
