@@ -16,6 +16,8 @@
 #include <utility>
 #include <vector>
 
+namespace {
+
 class Palette{
 public:
   Palette() = default;
@@ -24,11 +26,16 @@ public:
   Palette& SetPalette( std::vector<Style> palette ){ styles_ = std::move(palette); return *this; }
   const std::vector<Style>& GetPalette(){ return styles_; }
   template< class T >
-  void PaintObjects( std::vector< Wrap<T> >& objects ) const { std::for_each( objects.begin(), objects.end(), 
+  void PaintObjects( std::vector< Wrap<T> >& objects ) const { 
+    std::for_each( objects.begin(), objects.end(), 
     [this, i=0]( auto& obj ) mutable {
       obj.SetStyle( styles_.at(i) );
       ++i;
-    } ); }
+    } ); 
+  }
+  void PaintObject( size_t style_idx, TGraphErrors* graph ) { 
+    styles_.at(style_idx).operator()( graph );
+  }
   TLegend* MakeLegend( const std::vector<std::string>& captions, std::vector<double> position = {} ){
     int i=0;
     TLegend* leg{};
@@ -99,9 +106,9 @@ private:
 
 class DoubleDifferential {
 public:
-  DoubleDifferential() = default;
+  DoubleDifferential() = delete;
   template<typename ...Args>
-  DoubleDifferential(Args... args) : base_correlation_{ args... }{ }
+  DoubleDifferential(std::string title, Args... args) : base_correlation_{ title, args... }{ }
   DoubleDifferential( const DoubleDifferential& ) = default;
   DoubleDifferential& operator=( const DoubleDifferential& ) = default;
   DoubleDifferential( DoubleDifferential&& ) = default;
@@ -135,98 +142,114 @@ public:
     return palette_.MakeLegend( captions, position );
   }
   std::vector<Wrap<Correlation>>& operator*(){
+    if( result_correlations_.empty() )
+      Slice();
+    return result_correlations_;
+  }
+private:
+  void Slice(){
     auto n_projections = slice_axis_.GetNBins();
     auto slice_var = slice_axis_.Name();
     auto bin_edges = slice_axis_.GetBinEdges();
-    auto projection_var = projection_axis_.Name();
+    // auto projection_var = projection_axis_.Name();
     base_correlation_
-      .Rebin( {slice_axis_, projection_axis_} )
-      .Project( {slice_var, projection_var} );
+      .Rebin( std::vector<Qn::AxisD>{slice_axis_, projection_axis_} )
+      .Project( std::vector<Qn::AxisD>{slice_axis_, projection_axis_} );
     result_correlations_.reserve(n_projections);
     for( int i=0; i<n_projections; ++i ){
       result_correlations_.emplace_back( base_correlation_ );
       
-      (*result_correlations_.back()).Rebin( {{slice_var, 1, bin_edges.at(i), bin_edges.at(i+1)} } )
-        .Project( {projection_var} );
+      result_correlations_.back().Rebin( std::vector<Qn::AxisD>{{slice_var, 1, bin_edges.at(i), bin_edges.at(i+1)} } )
+        .Project( std::vector<Qn::AxisD>{{projection_axis_}} );
       palette_.PaintObjects( result_correlations_ );
     }
-    return result_correlations_;
   }
-private:
   Palette palette_;
-  Correlation base_correlation_;
+  Wrap<Correlation> base_correlation_;
   std::vector< Wrap<Correlation> > result_correlations_;
-
-  Qn::AxisD slice_axis_;
-  Qn::AxisD projection_axis_;
+  Qn::AxisD slice_axis_{};
+  Qn::AxisD projection_axis_{};
 };
 
 template<typename T>
 class RatioBuilder {
 public:
   template<typename... Args>
-  RatioBuilder( Args... args ) : reference_(args...) {}
+  RatioBuilder( std::string title, Args... args ) {
+    results_.emplace_back( args... );
+    titles_.emplace_back( std::move(title) );
+  }
   ~RatioBuilder() = default;
   template<typename ...Args>
-  RatioBuilder& AddToBunch( std::string title, Args... args ){ results_.emplace_back( title, args...); return *this; }
-  std::vector<Wrap<T>>& GetResults(){
-    palette_.PaintObjects( results_ );
+  RatioBuilder& AddToBunch( std::string title, Args... args ){ 
+    titles_.emplace_back( title );
+    results_.emplace_back( args...); 
+    return *this; 
+  }
+  std::vector<Result<T>>& GetResults(){
     return results_;
   }
-  std::vector<Wrap<T>>& GetRatios(){
-    if( ratios_.empty() ){
-      int i=0;
-      ratios_.reserve( results_.size() );
-      std::for_each( results_.begin(), results_.end(), [this, i=0](auto& obj) mutable {
-        ratios_.emplace_back( obj.Divide( reference_ )  );
-        ++i;
-      } );
-    }
-    palette_.PaintObjects( ratios_ );
+  std::vector<Result<T>>& GetRatios(){
+    BuildRatios();
     return ratios_;
   }
   template<typename Func>
   RatioBuilder<T>& Perform( const Func& function ){ 
     std::for_each( results_.begin(), results_.end(), function ); 
-    function( reference_ ); 
     return *this; 
   }
   template<typename Func>
   RatioBuilder<T>& operator()( const Func& function ){ 
     std::for_each( results_.begin(), results_.end(), function ); 
-    function( reference_ ); 
     return *this; 
   }
-  RatioBuilder<T>& SetPalette( const Style& ref_style, std::vector<Style> corr_styles ){
-    reference_.SetStyle(ref_style);
+  RatioBuilder<T>& SetPalette( std::vector<Style> corr_styles ){
     palette_.SetPalette(corr_styles);
     return *this;
   }
-  Wrap<T>& GetReference(){ return reference_; }
+  Result<T>& GetReference(){ return results_.front(); }
   TLegend* MakeLegend( std::vector<double> position = {} ){
-    std::vector<std::string> result_titles{};
-    result_titles.reserve( results_.size() );
-    std::for_each( results_.begin(), results_.end(), [&result_titles] (const Wrap<T>& obj) { result_titles.push_back( obj.GetTitle() ); } );
-    auto leg = palette_.MakeLegend( result_titles, position );    
-    auto graph = new TGraph(0);
-      graph->SetLineColor( reference_.GetStyle().color_ );
-      graph->SetMarkerColor( reference_.GetStyle().color_ );
-      if( reference_.GetStyle().marker_ >= 0 ){
-        graph->SetMarkerStyle( reference_.GetStyle().marker_ );
-        leg->AddEntry( graph, reference_.GetTitle().c_str(), "P" );
-      }
-      if( reference_.GetStyle().marker_ < 0 ){
-        graph->SetLineStyle( reference_.GetStyle().marker_ );
-        leg->AddEntry( graph, reference_.GetTitle().c_str(), "L" );
-      }
-      return leg;
+    auto leg = palette_.MakeLegend(titles_, position);
+    return leg;
   }
-  
+  size_t Size() const { return results_.size(); }
+  std::vector<Wrap<TGraphErrors>>& GetResultWraps(){ UpdatePoints(); return result_points_; }
+  std::vector<Wrap<TGraphErrors>>& GetRatioWraps(){ UpdatePoints(); return ratio_points_; }
 private:
+  void BuildRatios(){
+    if( ratios_.empty() ){
+      int i=0;
+      const auto& reference = results_.front();
+      ratios_.reserve( results_.size() );
+      std::for_each( results_.begin(), results_.end(), [&reference, this, i=0](auto& obj) mutable {
+        ratios_.emplace_back( obj.Divide( reference )  );
+      } );
+    }
+  }
+  void UpdatePoints(){
+    BuildRatios();
+    if( ! result_points_.empty() ){
+      return;
+    }
+    std::for_each( results_.begin(), results_.end(), 
+    [this]( auto obj  ) {
+      result_points_.push_back( Wrap<TGraphErrors>(obj.GetPoints()) );
+    });
+    std::for_each( ratios_.begin(), ratios_.end(), 
+    [this]( auto obj  ) {
+      ratio_points_.push_back( Wrap<TGraphErrors>(obj.GetPoints()) );
+    });
+    palette_.PaintObjects(result_points_);
+    palette_.PaintObjects(ratio_points_);
+  };
+  std::vector<std::string>  titles_{};
   Palette palette_;
-  Wrap<T> reference_;
-  std::vector<Wrap<Correlation>> results_;
-  std::vector<Wrap<Correlation>> ratios_;
+  std::vector<Result<T>> results_{};
+  std::vector<Result<T>> ratios_{};
+  std::vector<Wrap<TGraphErrors>> result_points_{};
+  std::vector<Wrap<TGraphErrors>> ratio_points_{};
 };
+
+}
 
 #endif // BUNCH_H

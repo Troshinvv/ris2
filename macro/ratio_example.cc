@@ -44,14 +44,14 @@ void ratio_example(){
     }
   )
   .SetPalette( 
-    Style().SetColor( kBlack ).SetMarker(-1),
-    std::vector{
+    std::vector<Style>{
+      Style().SetColor( kBlack ).SetMarker(-1),
       Style().SetColor( kRed ).SetMarker(kFullCircle),
       Style().SetColor( kBlue+2 ).SetMarker(kFullCircle),
       Style().SetColor( kGreen+2 ).SetMarker(kFullCircle),
   } );
-  container( []( Correlation& obj ){
-      (*obj).Rebin( { {"centrality", 1, 10, 30}, { "trPt", 1, 0.4, 1.4 } } ).Project({"trProtonY"});
+  container( []( auto& obj ){
+      obj.Rebin( std::vector<Qn::AxisD>{ {"centrality", 1, 10, 30}, { "trPt", 1, 0.4, 1.4 } } ).Project(std::vector<Qn::AxisD>{{"trProtonY", 6, -.2, 1.}});
   } );
   auto leg = container.MakeLegend( {0.25, 0.8, 0.55, 0.55} );
   auto plot = Plot({2000, 1100});

@@ -8,6 +8,7 @@ void dd_example(){
   std::string file_vf = "~/Flow/BM@N/vf.2024.02.12.root";
   
   auto container= DoubleDifferential{
+    "",
       file_vf,
       std::vector<std::string>{
           "proton/v1.F1_RESCALED(F3_RESCALED,Tpos_RESCALED).y1y1centrality",
@@ -30,13 +31,13 @@ void dd_example(){
   } );
 
   auto pT_proj = container;
-  pT_proj(  []( Correlation& obj ){ obj.Rebin( {{"centrality", 1, 10, 30}} );}  )
+  pT_proj(  []( auto& obj ){ obj.Rebin( std::vector<Qn::AxisD>{{"centrality", 1, 10, 30}} );}  )
     .SetSliceAxis({"trProtonY", 6, -0.4, 0.8})
     .SetProjectionAxis({ "trPt", 7, 0.0, 1.4 });
   auto leg_pT = pT_proj.MakeLegend( "y_{cm}"s );
   
   auto y_proj = container;
-  y_proj(  []( Correlation& obj ){ obj.Rebin( {{"centrality", 1, 10, 30}} );}  )
+  y_proj(  []( auto& obj ){ obj.Rebin( std::vector<Qn::AxisD>{{"centrality", 1, 10, 30}} );}  )
     .SetSliceAxis({ "trPt", 5, 0.0, 2.0 })
     .SetProjectionAxis({"trProtonY", 10, -0.6, 1.4});
   auto leg_y = y_proj.MakeLegend("p_{T}"s, "GeV/c"s);
@@ -53,6 +54,7 @@ void dd_example(){
       .SetYAxis(Axis().SetTitle("v_{1}").SetLo(-0.1).SetHi(0.2))
       .AddText( Text().SetText("BM@N RUN8").SetPosition({0.25, 0.9}).SetSize(0.04) )
       .AddToPlot( *y_proj )
+      .AddSystematics( *y_proj )
       .AddLegend( leg_y );
   plot.Print( "/home/mikhail/ris2/macro/pictures/dd_example.png" );
 }

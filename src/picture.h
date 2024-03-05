@@ -61,35 +61,37 @@ public:
   template<typename T>
   Picture& AddToPlot( Wrap<T>& wrap ){ 
     auto style = wrap.GetStyle();
+    auto graph =  wrap.ReleaseResult();
+    if( !graph ) return *this;
     if( style.marker_ >= 0 )
-      graph_stack_->Add( wrap.ReleasePoints(), "P" ); 
+      graph_stack_->Add( graph, "P" ); 
     if( style.marker_ < 0 )
-      graph_stack_->Add( wrap.ReleasePoints(), "L" ); 
+      graph_stack_->Add( graph, "L" ); 
     return *this; 
   }
+
   template<typename T>
-  Picture& AddToPlot( Systematics<T>& wrap ){ 
-    auto style = wrap->GetStyle();
-    if( style.marker_ >= 0 ){
-      graph_stack_->Add( wrap->ReleasePoints(), "P" ); 
+  Picture& AddSystematics(Wrap<T>& wrap){
+    auto style = wrap.GetStyle();
+    auto graph =  wrap.ReleaseResult();
+    if( !graph ) return *this;
+    if( style.marker_ >= 0 )
       graph_stack_->Add( wrap.ReleaseSystematics(), "P+2" ); 
-    }
-    if( style.marker_ < 0 ){
-      graph_stack_->Add( wrap->ReleasePoints(), "L" ); 
+    if( style.marker_ < 0 )
       graph_stack_->Add( wrap.ReleaseSystematics(), "L+2" ); 
-    }
     return *this; 
   }
   template<typename T>
   Picture& AddToPlot( std::vector<Wrap<T>>& bunch ){
     std::for_each( bunch.begin(), bunch.end(), [this]( Wrap<T>& obj ){ 
-      if( obj.GetStyle().marker_ >= 0 )
-        graph_stack_->Add( obj.ReleasePoints(), "P" ); 
-      if( obj.GetStyle().marker_ < 0 )
-        graph_stack_->Add( obj.ReleasePoints(), "L" ); 
-      if( obj.GetFit() ){
-        functions_.emplace_back(std::unique_ptr<TF1>( obj.GetFit()) );
-      }
+      AddToPlot( obj ); 
+    } );    
+    return *this;
+  }
+  template<typename T>
+  Picture& AddSystematics( std::vector<Wrap<T>>& bunch ){
+    std::for_each( bunch.begin(), bunch.end(), [this]( Wrap<T>& obj ){ 
+      AddSystematics(obj);
     } );    
     return *this;
   }
@@ -185,12 +187,12 @@ public:
   template<typename T>
   Plot& AddRatioPlot( RatioBuilder<T>& ratio, 
     std::vector<double> result_plot = { 0.0, 0.35, 1.0, 1.0 },
-    std::vector<double> ratio_plot = { 0.0, 0.0, 1.0, .35 }){
+    std::vector<double> ratio_plot = { 0.0, 0.0, 1.0, .35 }
+  ){
       plots_.emplace_back( result_plot );
-      plots_.back().AddToPlot( ratio.GetResults() );
-      plots_.back().AddToPlot( ratio.GetReference() );
+      plots_.back().AddToPlot( ratio.GetResultWraps() );
       plots_.emplace_back( ratio_plot );
-      plots_.back().AddToPlot( ratio.GetRatios() );
+      plots_.back().AddToPlot( ratio.GetRatioWraps() );
       return *this;
   }
   Plot& Print( const std::string& save_name ){
