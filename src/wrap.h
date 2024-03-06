@@ -98,7 +98,7 @@ public:
   /// @brief Function for scaling object. Specialized for each type of storing objects
   Result<T>& Scale( double scale ){ return *this; }
   /// @brief Function used for building ratios. Specialized for each type of storing objects
-  Result<T>& Divide( const Result<T> other ) const { return Result<T>{}; }
+  Result<T> Divide( const Result<T> other ) const { return Result<T>{}; }
 };
 
 /// @brief Dummy class for calculating the systematical variation
@@ -263,9 +263,9 @@ public:
     }
     average_ = correlations.front();
     correlations.pop();
-    auto* list_merge = new TList;
+    auto list_merge = new TList;
     while( !correlations.empty() ) {
-      auto* to_merge = new Qn::DataContainerStatCalculate( correlations.front() );
+      auto to_merge = new Qn::DataContainerStatCalculate( correlations.front() );
       list_merge->Add(to_merge);
       correlations.pop();
     }
@@ -365,9 +365,9 @@ public:
   }
   TGraphErrors* GetPoints(){
     auto average = averaging_objects_.front();
-    auto* list_merge = new TList;
+    auto list_merge = new TList;
     for( int i=1; i<averaging_objects_.size(); ++i ) {
-      auto* to_merge = new Qn::DataContainerStatCalculate( averaging_objects_.at(i) );
+      auto to_merge = new Qn::DataContainerStatCalculate( averaging_objects_.at(i) );
       list_merge->Add(to_merge);
     }
     average.Merge(list_merge);
@@ -411,9 +411,9 @@ public:
     auto new_name = std::string(histograms.front()->GetName()) + "_copy";
     histogram_ = std::unique_ptr<TH1>( dynamic_cast<TH1*>(histograms.front()->Clone( new_name.c_str() )) );
     histograms.pop();
-    auto* list_merge = new TList;
+    auto list_merge = new TList;
     while( !histograms.empty() ) {
-      auto* to_merge = histograms.front();
+      auto to_merge = histograms.front();
       list_merge->Add(to_merge);
       histograms.pop();
     }
@@ -452,6 +452,11 @@ public:
     histogram_->Scale(scale);
     return *this;
   }
+  Result<TH1> Divide( const Result<TH1>& other ){
+    auto result = Result<TH1>(*this);
+    result.histogram_->Divide( other.histogram_ );
+    return result;
+  }
 private:
   std::unique_ptr<TH1> histogram_;
 };
@@ -483,7 +488,7 @@ public:
   TGraphErrors* GetPoints(  ){
     auto new_name = std::string(averaging_objects_.front()->GetName()) + "_copy";
     auto average = std::unique_ptr<TH1>( dynamic_cast<TH1*>(averaging_objects_.front()->Clone( new_name.c_str() )) );
-    auto* list_merge = new TList;
+    auto list_merge = new TList;
     for( int i=1; i<averaging_objects_.size(); ++i ) {
       auto to_merge = averaging_objects_.at(i).get();
       list_merge->Add(to_merge);
