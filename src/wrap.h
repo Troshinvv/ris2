@@ -2,6 +2,7 @@
 #define NEW_WRAPH_H
 
 // #include "wrap.h"
+#include <array>
 #include <exception>
 #include <memory>
 #include <string>
@@ -14,6 +15,7 @@
 #include <StatCalculate.hpp>
 #include <StatCollect.hpp>
 #include <Axis.hpp>
+#include <type_traits>
 
 namespace ris2{
 
@@ -99,6 +101,7 @@ public:
   Result<T>& Scale( double scale ){ return *this; }
   /// @brief Function used for building ratios. Specialized for each type of storing objects
   Result<T> Divide( const Result<T> other ) const { return Result<T>{}; }
+  Result<T> ScaleXaxis( double scale ) const { return Result<T>{}; }
 };
 
 /// @brief Dummy class for calculating the systematical variation
@@ -118,6 +121,7 @@ public:
   template<typename... Args>
   Systematics<T>& Project(Args... args){ return *this; }
   Systematics<T>& Scale( double scale ){ return *this; }
+  Systematics<T> ScaleXaxis( double scale ) const { return Systematics<T>{}; }
 };
 
 /// @brief Interface class for manipulating the drawable object.
@@ -171,11 +175,11 @@ public:
     return *this;
   }
   /// @brief Returns the result in the form TGraphErrors but keeps owning the object.
-  TGraphErrors* GetResult() const { UpdatePoints(); return result_points_.get(); }
+  TGraphErrors* GetResult() { UpdatePoints(); return result_points_.get(); }
   /// @brief Releases the result points. Memory management is handled to the caller.
   TGraphErrors* ReleaseResult(){ UpdatePoints(); return result_points_.release(); }
   /// @brief Returns the systematics in the form TGraphErrors but keeps owning the object.
-  TGraphErrors* GetSystematics() const { UpdatePoints(); return sys_error_points_.get(); }
+  TGraphErrors* GetSystematics() { UpdatePoints(); return sys_error_points_.get(); }
   /// @brief Releases the systematic points. Memory management is handled to the caller.
   TGraphErrors* ReleaseSystematics(){ UpdatePoints(); return sys_error_points_.release(); }
   /// @brief For delayed initialization of the Wrap
@@ -207,6 +211,23 @@ public:
   Wrap<T>& Scale( double scale ){
     result_.Scale(scale);
     systematics_.Scale(scale);
+    return *this;
+  }
+  /// @brief Scaling the X-axis. Supported for all three types.
+  Wrap<T>& ScaleXaxis( double scale ){
+    result_.ScaleXaxis(scale);
+    systematics_.ScaleXaxis(scale);
+    return *this;
+  }
+  /// @brief Fitting the result points.
+  Wrap<T>& Fit( TF1* fit_function, std::vector<double> fit_range = {} ){
+    UpdatePoints();
+    if( fit_range.empty() )
+      result_points_->Fit( fit_function, "B", "" );
+    else
+      result_points_->Fit( fit_function, "B", "", fit_range.at(0), fit_range.at(1) );
+    auto res_fit = dynamic_cast<TF1*>( result_points_->GetListOfFunctions()->First() );
+    res_fit->SetLineColor(style_.color_);
     return *this;
   }
 private:
@@ -454,7 +475,7 @@ public:
   }
   Result<TH1> Divide( const Result<TH1>& other ){
     auto result = Result<TH1>(*this);
-    result.histogram_->Divide( other.histogram_ );
+    result.histogram_->Divide( other.histogram_.get() );
     return result;
   }
 private:
