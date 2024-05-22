@@ -79,10 +79,12 @@ public:
     auto style = wrap.GetStyle();
     auto graph =  wrap.ReleaseResult();
     if( !graph ) return *this;
+    std::string option = style.marker_ >= 0 ? "P" : "L";
+    option.append( wrap.GetOption() );
     if( style.marker_ >= 0 )
-      graph_stack_->Add( graph, "P" ); 
+      graph_stack_->Add( graph, option.c_str() ); 
     if( style.marker_ < 0 )
-      graph_stack_->Add( graph, "L" ); 
+      graph_stack_->Add( graph, option.c_str() ); 
     return *this; 
   }
   /// @brief Adds the systematical errors of the Wrap<T> to the plot

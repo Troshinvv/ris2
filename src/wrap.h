@@ -7,19 +7,17 @@
 #include <memory>
 #include <string>
 #include <algorithm>
+#include <type_traits>
+#include <utility>
 
 #include <TGraphErrors.h>
 #include <TH1.h>
 
-#include <DataContainer.hpp>
-#include <StatCalculate.hpp>
-#include <StatCollect.hpp>
-#include <Axis.hpp>
-#include <type_traits>
-
 namespace ris2{
 
+#ifdef USE_QNTOOLS
 using Correlation = Qn::DataContainerStatCalculate;
+#endif
 using Histogram = TH1;
 using Graph = TGraphErrors;
 
@@ -183,7 +181,7 @@ public:
   /// @brief Releases the systematic points. Memory management is handled to the caller.
   TGraphErrors* ReleaseSystematics(){ UpdatePoints(); return sys_error_points_.release(); }
   /// @brief For delayed initialization of the Wrap
-  Wrap<T>& SetResult( Result<T> res ){ result_ = std::move(res); result_points_.reset(); };
+  Wrap<T>& SetResult( Result<T>&& res ){ result_ = std::move(res); result_points_.reset(); return *this; };
   /// @brief For delayed initialization of the Wrap
   Wrap<T>& SetSystematics( Systematics<T> sys ){ systematics_ = std::move(sys); sys_error_points_.reset(); };
   const Style& GetStyle(){ return style_; }
@@ -230,6 +228,8 @@ public:
     res_fit->SetLineColor(style_.color_);
     return *this;
   }
+  Wrap<T>& SetOption( std::string option ){ option_ = std::move(option); return *this; }
+  const std::string GetOption(){ return option_; }
 private:
   void UpdatePoints(){
     if( !result_points_ ){
@@ -240,6 +240,7 @@ private:
     }
     if( result_points_ ){
       style_( result_points_.get() );
+      result_points_->SetFillColorAlpha(style_.color_, 0.1);
     }
     if( sys_error_points_ ){
       style_( sys_error_points_.get() );
@@ -252,7 +253,10 @@ private:
   Systematics<T> systematics_;
   std::unique_ptr<TGraphErrors> result_points_{};
   std::unique_ptr<TGraphErrors> sys_error_points_{};
+  std::string option_;
 };
+
+#ifdef USE_QNTOOLS
 
 template<>
 class Result<Qn::DataContainerStatCalculate>{
@@ -262,7 +266,7 @@ public:
     if( !file_in )
       throw CannotOpenAFile( str_file_name );
     Qn::DataContainerStatCalculate* ptr_stat_calculate{nullptr};
-    Qn::DataContainerStatCalculate* ptr_stat_collect{nullptr};
+    Qn::DataContainerStatCollect* ptr_stat_collect{nullptr};
 
     std::queue<Qn::DataContainerStatCalculate> correlations;
     int i=0;
@@ -335,7 +339,7 @@ public:
     if( !file_in )
       throw CannotOpenAFile( str_file_name );
     Qn::DataContainerStatCalculate* ptr_stat_calculate{nullptr};
-    Qn::DataContainerStatCalculate* ptr_stat_collect{nullptr};
+    Qn::DataContainerStatCollect* ptr_stat_collect{nullptr};
     size_t i=0;
     for( auto name : objects ){
       auto weight = !weights.empty() ? weights.at(i) : 1.0;
@@ -415,6 +419,8 @@ public:
 private:
   std::vector<Qn::DataContainerStatCalculate>  averaging_objects_{};
 };
+
+#endif
 
 template<>
 class Result<TH1>{
@@ -545,6 +551,7 @@ private:
 template<>
 class Result<TGraphErrors>{
 public:
+  Result() = default;
   Result( std::string str_file_name, std::string str_obj ){
     auto file = std::make_unique<TFile>( str_file_name.c_str(), "READ" );
     TGraph* ptr{nullptr};
@@ -553,7 +560,9 @@ public:
   }
   Result( TGraphErrors* points ) : graph_( std::unique_ptr<TGraphErrors>(points) ) {  }
   Result( Result<TH1>&  histogram ) : graph_{ std::unique_ptr<TGraphErrors>(  histogram.GetPoints() ) }{ }
+  #ifdef QNTOOLS
   Result( Result<Qn::DataContainerStatCalculate>&  correlation ) : graph_{ std::unique_ptr<TGraphErrors>(  correlation.GetPoints() ) }{ }
+  #endif
   Result& Scale(double scale){
     for( size_t i=0; i<graph_->GetN(); ++i ){
       auto x = graph_->GetPointX(i);
@@ -582,6 +591,8 @@ public:
     }
     return *this;
   }
+  template<typename Func>
+  Result& Perform( const Func& function ){ function(graph_.get()); return *this; }
   TGraphErrors* GetPoints(){
     return dynamic_cast<TGraphErrors*>( graph_->Clone() );
   }

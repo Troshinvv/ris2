@@ -1,12 +1,6 @@
 #ifndef BUNCH_H
 #define BUNCH_H
 
-#include "wrap.h"
-#include <Axis.hpp>
-#include <TGraph.h>
-#include <TGraphErrors.h>
-#include <TLegend.h>
-#include <TMultiGraph.h>
 #include <algorithm>
 #include <exception>
 #include <fstream>
@@ -17,6 +11,14 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <TGraph.h>
+#include <TGraphErrors.h>
+#include <TLegend.h>
+#include <TMultiGraph.h>
+
+
+#include "wrap.h"
 
 namespace ris2{
 
@@ -145,6 +147,9 @@ private:
 
 /// @brief A class to automatically plot double-differential results
 /// Draws the projectin on the required axis in narrow bins of the second axis
+
+#ifdef USE_QNTOOLS
+
 class DoubleDifferential {
 public:
   /// @brief Default constructor
@@ -228,6 +233,8 @@ private:
   Qn::AxisD slice_axis_{};
   Qn::AxisD projection_axis_{};
 };
+
+#endif
 
 /// @brief Class to create the ratio plots.
 /// Used for systematic checks. The ratio is built with respect to one of the selected values.

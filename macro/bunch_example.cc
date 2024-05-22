@@ -5,7 +5,7 @@
 void bunch_example(){
   gROOT->Macro( "/home/mikhail/ris2/macro/style.cc" );
   std::string file_vf = "~/Flow/BM@N/vf.2024.02.12.root";
-  
+  using namespace ris2;
   auto container= Bunch<Correlation>{}
       .AddToBunch(
       std::string{"F1"},
@@ -27,12 +27,25 @@ void bunch_example(){
     std::vector<std::string>{
           "proton/v1.F3_RESCALED(F1_RESCALED,Tpos_RESCALED).y1y1centrality",
           "proton/v1.F3_RESCALED(F1_RESCALED,Tneg_RESCALED).y1y1centrality",
+    })
+    .AddToBunch(
+    std::string{"F3"},
+    file_vf, 
+    std::vector<std::string>{
+          "proton/v1.F1_RESCALED(F3_RESCALED,Tpos_RESCALED).y1y1centrality",
+          "proton/v1.F1_RESCALED(F3_RESCALED,Tneg_RESCALED).y1y1centrality",
+          "proton/v1.F2_RESCALED.Tpos_RESCALED(F1_RESCALED,F3_RESCALED).y1y1centrality",
+          "proton/v1.F2_RESCALED.Tneg_RESCALED(F1_RESCALED,F3_RESCALED).y1y1centrality",
+          "proton/v1.F3_RESCALED(F1_RESCALED,Tpos_RESCALED).y1y1centrality",
+          "proton/v1.F3_RESCALED(F1_RESCALED,Tneg_RESCALED).y1y1centrality",
     }
-  );
+  )
+  ;
   container.GetPalette().SetPalette( std::vector{
       Style().SetColor( kRed ).SetMarker(kFullCircle),
       Style().SetColor( kBlue+2 ).SetMarker(kFullCircle),
       Style().SetColor( kGreen+2 ).SetMarker(kFullCircle),
+      Style().SetColor( kBlack ).SetMarker(-1),
   } );
   container.Perform( []( auto& obj ){
       obj
