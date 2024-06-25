@@ -1,23 +1,27 @@
 #ifndef PICTURE_H
 #define PICTURE_H
 
-#include <TPad.h>
-#include <TVirtualPad.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <limits>
 #include <memory>
 #include <random>
+#include <stack>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <TPad.h>
+#include <TVirtualPad.h>
 #include <TMultiGraph.h>
 #include <TCanvas.h>
 #include <TROOT.h>
 #include <TLatex.h>
 #include <TF1.h>
 #include <TLegend.h>
+#include <TH2.h>
+#include <TFile.h>
 
 #include "wrap.h"
 #include "bunch.h"
@@ -32,9 +36,11 @@ struct Axis{
   Axis& SetHi( double hi ){ hi_ = hi; return *this; }
   /// @brief Sets the lower value of the axis
   Axis& SetLo( double lo ){ lo_ = lo; return *this; }
+  Axis& SetLog( bool value = true ){ log_ = value; return *this; }
   std::string title_{};
   double hi_{};
   double lo_{};
+  bool log_{false};
 };
 
 /// @brief Class used to add text to the plot
@@ -49,6 +55,17 @@ struct Text{
   double size_;
   std::string text_;
   std::array<double, 2> position_;
+};
+
+class FileManager{
+public:
+  FileManager() = default;
+  TFile* AddFile( std::string file_name ){
+    files_.push( std::unique_ptr<TFile>{TFile::Open( file_name.c_str() )} );
+    return files_.top().get();
+  }
+private:
+  std::stack< std::unique_ptr<TFile> > files_{};
 };
 
 /// @brief Class handling the sub-plots of the picture
@@ -86,6 +103,13 @@ public:
     if( style.marker_ < 0 )
       graph_stack_->Add( graph, option.c_str() ); 
     return *this; 
+  }
+  /// @brief Adds the TH2 object to the plot
+  Picture& AddToPlot( const std::string& file_name, const std::string& histo2d_name ){
+    file_histo2d_ = std::make_unique<TFile>( file_name.c_str() );
+    TH2D* histo2d_ptr{};
+    file_histo2d_->GetObject(histo2d_name.c_str(), histo2d_);
+    return *this;
   }
   /// @brief Adds the systematical errors of the Wrap<T> to the plot
   template<typename T>
@@ -130,9 +154,11 @@ public:
     return *this;
   }
   /// @brief Customizing the X-axis
-  Picture& SetXAxis( Axis axis ){ x_axis_ = axis; return *this; }
+  Picture& SetXAxis( Axis axis ){ x_axis_ = std::move(axis); return *this; }
   /// @brief Customizing the Y-axis
-  Picture& SetYAxis( Axis axis ){ y_axis_ = axis; return *this; }
+  Picture& SetYAxis( Axis axis ){ y_axis_ = std::move(axis); return *this; }
+  /// @brief Customizing the Y-axis
+  Picture& SetZAxis( Axis axis ){ z_axis_ = std::move(axis); return *this; }
   /// @brief Adds text to the sub-plot
   Picture& AddText( Text text ) {
     texts_.emplace_back(std::move(text));
@@ -151,9 +177,54 @@ public:
   /// @brief Plots all of the added objects
   TPad* Print(){
     pad_->cd();
+    Draw2D();
+    Draw1D();
+    DrawText();
+    DrawLegends();
+    DrawFunctions();
+    if( x_axis_.log_ )
+      pad_->SetLogx();
+    if( y_axis_.log_ )
+      pad_->SetLogy();
+    if( z_axis_.log_ )
+      pad_->SetLogz();
+    return pad_;
+  }
+private:
+  void Draw2D(){
+    if( !histo2d_ )
+      return;
+    auto axis_titles = std::string{";"}.append( x_axis_.title_ ).append(";").append(y_axis_.title_);
+    histo2d_->SetTitle(axis_titles.c_str());
+    histo2d_->Draw("colz");
+    SetLimits2D();
+  }
+  void SetLimits2D(){
+    if( x_axis_.hi_ > x_axis_.lo_ ){
+      histo2d_->GetXaxis()->SetRangeUser(x_axis_.lo_, x_axis_.hi_);
+      histo2d_->Draw("colz");
+    }
+    if( y_axis_.hi_ > y_axis_.lo_ ){
+      histo2d_->GetYaxis()->SetRangeUser(y_axis_.lo_, y_axis_.hi_);
+      histo2d_->Draw("colz");
+    }
+    if( z_axis_.hi_ > z_axis_.lo_ ){
+      histo2d_->SetMinimum(z_axis_.lo_);
+      histo2d_->SetMaximum(z_axis_.hi_);
+      histo2d_->Draw("colz");
+    }
+  }
+  void Draw1D(){
+    if( !graph_stack_->GetListOfGraphs() )
+      return;
     auto axis_titles = std::string{";"}.append( x_axis_.title_ ).append(";").append(y_axis_.title_);
     graph_stack_->SetTitle(axis_titles.c_str());
-    graph_stack_->Draw("APL");
+    graph_stack_->Draw(!histo2d_ ? "APL" : "APL+SAME");
+    SetLimits1D();
+  }
+  void SetLimits1D(){
+    if( histo2d_ )
+      return;
     if( x_axis_.hi_ > x_axis_.lo_ ){
       graph_stack_->GetHistogram()->GetXaxis()->SetLimits(x_axis_.lo_, x_axis_.hi_);
       graph_stack_->GetHistogram()->Draw("APL");
@@ -162,6 +233,8 @@ public:
       graph_stack_->GetHistogram()->GetYaxis()->SetRangeUser(y_axis_.lo_, y_axis_.hi_);
       graph_stack_->Draw("APL");
     }
+  }
+  void DrawText(){
     vec_tlatexs_.reserve( texts_.size() );
     for( auto text : texts_ ){
       vec_tlatexs_.emplace_back( new TLatex( text.position_.at(0), text.position_.at(1), text.text_.c_str() ) );
@@ -169,19 +242,25 @@ public:
       vec_tlatexs_.back()->SetTextSize( text.size_ );
       vec_tlatexs_.back()->Draw("same");
     }
+  }
+  void DrawLegends(){
     for( auto& leg : legends_ ){
       leg->SetFillStyle(0);
       leg->Draw( "same" );
     }
-    functions_.emplace_back(new TF1( "zero", "0", x_axis_.lo_, x_axis_.hi_ ));
+  }
+  void DrawFunctions(){
+    // functions_.emplace_back(new TF1( "zero", "0", x_axis_.lo_, x_axis_.hi_ ));
     for( auto& f : functions_ )
       f->Draw("same");
-    return pad_;
   }
-private:
+  
   Axis x_axis_;
   Axis y_axis_;
+  Axis z_axis_;
   TPad* pad_{};
+  std::unique_ptr<TFile> file_histo2d_{};
+  TH2D* histo2d_{};
   std::unique_ptr<TMultiGraph> graph_stack_{};
   std::vector<Text> texts_{};
   std::vector< std::unique_ptr<TLatex> > vec_tlatexs_{};

@@ -141,13 +141,13 @@ public:
   /// @brief default destructor
   ~Wrap<T>() = default;
   /// @brief A copy constructor. Copies the underlying objects.
-  Wrap<T>( const Wrap<T>& other ) : 
+  Wrap<T>( Wrap<T>& other ) : 
     result_(other.result_), 
     systematics_(other.systematics_),
     style_(other.style_),
     title_(other.title_) {  }
   /// @brief A copy assignement operator. Copies the underlying objects.
-  Wrap<T> operator=( const Wrap<T>& other ) { 
+  Wrap<T> operator=( Wrap<T>& other ) { 
     result_ = other.result_;
     systematics_ = other.systematics_;
     style_ = other.style_;
@@ -183,7 +183,7 @@ public:
   /// @brief For delayed initialization of the Wrap
   Wrap<T>& SetResult( Result<T>&& res ){ result_ = std::move(res); result_points_.reset(); return *this; };
   /// @brief For delayed initialization of the Wrap
-  Wrap<T>& SetSystematics( Systematics<T> sys ){ systematics_ = std::move(sys); sys_error_points_.reset(); };
+  Wrap<T>& SetSystematics( Systematics<T> sys ){ systematics_ = std::move(sys); sys_error_points_.reset();  return *this;};
   const Style& GetStyle(){ return style_; }
   Wrap<T>& SetStyle( Style style ){ style_ = std::move(style); return *this; }
   const std::string& GetTitle() const { return title_; }
@@ -295,6 +295,14 @@ public:
       correlations.pop();
     }
     average_.Merge(list_merge);
+  }
+  template<typename Func>
+  Result<Qn::DataContainerStatCalculate>( 
+    std::string str_file_name, 
+    std::vector<std::string> objects, 
+    Func function ) : 
+  Result<Qn::DataContainerStatCalculate>( str_file_name, objects ) {
+    function(average_);
   }
   Result<Qn::DataContainerStatCalculate>( const Result<Qn::DataContainerStatCalculate>& ) = default;
   Result<Qn::DataContainerStatCalculate>( Result<Qn::DataContainerStatCalculate>&& ) noexcept = default;
@@ -558,8 +566,21 @@ public:
     file->GetObject(str_obj.c_str(), ptr);
     graph_ = std::unique_ptr<TGraphErrors>( dynamic_cast<TGraphErrors*>(ptr->Clone()) );
   }
-  Result( TGraphErrors* points ) : graph_( std::unique_ptr<TGraphErrors>(points) ) {  }
-  Result( Result<TH1>&  histogram ) : graph_{ std::unique_ptr<TGraphErrors>(  histogram.GetPoints() ) }{ }
+  Result( TGraphErrors* points ) : graph_( std::unique_ptr<TGraphErrors>( dynamic_cast<TGraphErrors*>(points->Clone()) ) ) {  }
+  Result( const Result<TH1>&  histogram ) : graph_{ std::unique_ptr<TGraphErrors>(  histogram.GetPoints() ) }{ }
+
+  Result( const Result<TGraphErrors>& graph ) : graph_( std::unique_ptr<TGraphErrors>( dynamic_cast<TGraphErrors*>(graph.graph_->Clone()) ) ) {}
+  Result& operator=( const Result<TGraphErrors>& graph ) {
+    graph_.reset( dynamic_cast<TGraphErrors*>(graph.graph_->Clone()) );
+    return *this;
+  }
+  Result( Result<TGraphErrors>&& graph ) : graph_( std::unique_ptr<TGraphErrors>( graph.graph_.release() ) ) {}
+  Result& operator=( Result<TGraphErrors>&& graph ) {
+    graph_.reset( graph.graph_.release() );
+    return *this;
+  }
+  
+
   #ifdef QNTOOLS
   Result( Result<Qn::DataContainerStatCalculate>&  correlation ) : graph_{ std::unique_ptr<TGraphErrors>(  correlation.GetPoints() ) }{ }
   #endif

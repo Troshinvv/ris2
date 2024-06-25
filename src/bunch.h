@@ -160,9 +160,9 @@ public:
   template<typename ...Args>
   DoubleDifferential(std::string title, Args... args) : base_correlation_{ title, args... }{ }
   /// @brief Copy constructor
-  DoubleDifferential( const DoubleDifferential& ) = default;
+  DoubleDifferential( DoubleDifferential& ) = default;
   /// @brief Copy assignment operator
-  DoubleDifferential& operator=( const DoubleDifferential& ) = default;
+  DoubleDifferential& operator=( DoubleDifferential& ) = default;
   /// @brief Move constructor
   DoubleDifferential( DoubleDifferential&& ) = default;
   /// @brief Move assignment operator
@@ -258,7 +258,7 @@ public:
   /// @param args is the parameter pack to initialize the Result<T>
   template<typename ...Args>
   RatioBuilder& AddToBunch( std::string title, Args... args ){ 
-    titles_.emplace_back( title );
+    titles_.emplace_back( std::move(title) );
     results_.emplace_back( args...); 
     return *this; 
   }
