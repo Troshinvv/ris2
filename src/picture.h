@@ -22,6 +22,7 @@
 #include <TLegend.h>
 #include <TH2.h>
 #include <TFile.h>
+#include <TLine.h>
 
 #include "wrap.h"
 #include "bunch.h"
@@ -107,7 +108,6 @@ public:
   /// @brief Adds the TH2 object to the plot
   Picture& AddToPlot( const std::string& file_name, const std::string& histo2d_name ){
     file_histo2d_ = std::make_unique<TFile>( file_name.c_str() );
-    TH2D* histo2d_ptr{};
     file_histo2d_->GetObject(histo2d_name.c_str(), histo2d_);
     return *this;
   }
@@ -174,6 +174,10 @@ public:
     functions_.emplace_back(func);
     return *this;
   }
+  Picture& AddLine( TLine* line ){
+    lines_.emplace_back(line);
+    return *this;
+  }
   /// @brief Plots all of the added objects
   TPad* Print(){
     pad_->cd();
@@ -182,6 +186,7 @@ public:
     DrawText();
     DrawLegends();
     DrawFunctions();
+    DrawLines();
     if( x_axis_.log_ )
       pad_->SetLogx();
     if( y_axis_.log_ )
@@ -194,7 +199,7 @@ private:
   void Draw2D(){
     if( !histo2d_ )
       return;
-    auto axis_titles = std::string{";"}.append( x_axis_.title_ ).append(";").append(y_axis_.title_);
+    auto axis_titles = std::string{";"}.append( x_axis_.title_ ).append(";").append(y_axis_.title_).append(";").append(z_axis_.title_);
     histo2d_->SetTitle(axis_titles.c_str());
     histo2d_->Draw("colz");
     SetLimits2D();
@@ -254,17 +259,23 @@ private:
     for( auto& f : functions_ )
       f->Draw("same");
   }
+  void DrawLines(){
+    // functions_.emplace_back(new TF1( "zero", "0", x_axis_.lo_, x_axis_.hi_ ));
+    for( auto& l : lines_ )
+      l->Draw("same");
+  }
   
   Axis x_axis_;
   Axis y_axis_;
   Axis z_axis_;
   TPad* pad_{};
   std::unique_ptr<TFile> file_histo2d_{};
-  TH2D* histo2d_{};
+  TH2* histo2d_{};
   std::unique_ptr<TMultiGraph> graph_stack_{};
   std::vector<Text> texts_{};
   std::vector< std::unique_ptr<TLatex> > vec_tlatexs_{};
   std::vector< std::unique_ptr<TF1> > functions_{};
+  std::vector< std::unique_ptr<TLine> > lines_{};
   std::vector<std::unique_ptr<TLegend>> legends_;
 };
 
