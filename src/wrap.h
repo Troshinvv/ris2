@@ -86,7 +86,6 @@ public:
   Result() = default;
   template<typename... Args>
   Result( Args... args ){}
-  ~Result() = default;
   /// @brief Function for extracting the result points in the form of TGraph. Specialized for each type of storing objects
   TGraphErrors* GetPoints(){ return nullptr; }
   template<typename... Args>
@@ -110,7 +109,6 @@ public:
   Systematics() = default;
   template<typename... Args>
   Systematics( Args... args ){}
-  ~Systematics() = default;
   template<typename... Args>
   Systematics<T>& AddToSystematics( Args... args ){ return *this; }
   TGraphErrors* GetPoints(){ return nullptr; }
@@ -141,13 +139,13 @@ public:
   /// @brief default destructor
   ~Wrap<T>() = default;
   /// @brief A copy constructor. Copies the underlying objects.
-  Wrap<T>( Wrap<T>& other ) : 
+  Wrap<T>( const Wrap<T>& other ) : 
     result_(other.result_), 
     systematics_(other.systematics_),
     style_(other.style_),
     title_(other.title_) {  }
   /// @brief A copy assignement operator. Copies the underlying objects.
-  Wrap<T> operator=( Wrap<T>& other ) { 
+  Wrap<T> operator=( const Wrap<T>& other ) { 
     result_ = other.result_;
     systematics_ = other.systematics_;
     style_ = other.style_;
@@ -258,6 +256,26 @@ private:
 
 #ifdef USE_QNTOOLS
 
+
+template<typename T>
+auto ReadCorrelationFromFile( TFile* file, std::string name ) -> T {
+  T* ptr{nullptr};
+  file->GetObject( name.c_str(), ptr );
+  if( !ptr )
+    throw CannotPullAnObject(file->GetName(), name);
+  return *ptr; 
+}
+
+auto MakeDataContainer(TFile* file, std::string name) -> Qn::DataContainerStatCalculate {
+  try{
+    auto stat_calculate = ReadCorrelationFromFile<Qn::DataContainerStatCalculate>( file, name.c_str() );
+    return stat_calculate;
+  } catch( std::exception& e ){
+    auto stat_collect = ReadCorrelationFromFile<Qn::DataContainerStatCollect>( file, name.c_str() );
+    return Qn::DataContainerStatCalculate(stat_collect);
+  }
+}
+
 template<>
 class Result<Qn::DataContainerStatCalculate>{
 public:
@@ -269,31 +287,20 @@ public:
     Qn::DataContainerStatCollect* ptr_stat_collect{nullptr};
 
     std::queue<Qn::DataContainerStatCalculate> correlations;
-    int i=0;
+    auto i = size_t{};
     for( auto name : objects ){
-      auto weight = !weights.empty() ? weights.at(i) : 1.0;
-      file_in->GetObject( name.c_str(), ptr_stat_calculate );
-      file_in->GetObject( name.c_str(), ptr_stat_collect );
-      if( ptr_stat_calculate ){
-        correlations.push( Qn::DataContainerStatCalculate(*ptr_stat_calculate)*weight );
-        i++;
-        continue;
-      }
-      if( ptr_stat_collect ){
-        correlations.push( Qn::DataContainerStatCalculate(*ptr_stat_collect)*weight );
-        i++;
-        continue;
-      }
-      throw CannotPullAnObject(str_file_name, name);
+      auto weight = weights.empty() ? 1 : weights.at(i);
+      correlations.push( MakeDataContainer( file_in.get(), name )*weight );
+      ++i;
     }
     average_ = correlations.front();
     correlations.pop();
     auto list_merge = new TList;
-    while( !correlations.empty() ) {
-      auto to_merge = new Qn::DataContainerStatCalculate( correlations.front() );
-      list_merge->Add(to_merge);
-      correlations.pop();
-    }
+    if( correlations.empty() )
+      return;    
+    auto to_merge = new Qn::DataContainerStatCalculate( correlations.front() );
+    list_merge->Add(to_merge);
+    correlations.pop();
     average_.Merge(list_merge);
   }
   template<typename Func>
@@ -346,24 +353,10 @@ public:
     auto file_in = std::make_unique<TFile>( str_file_name.c_str(), "READ" );
     if( !file_in )
       throw CannotOpenAFile( str_file_name );
-    Qn::DataContainerStatCalculate* ptr_stat_calculate{nullptr};
-    Qn::DataContainerStatCollect* ptr_stat_collect{nullptr};
-    size_t i=0;
+    auto i = size_t{};
     for( auto name : objects ){
       auto weight = !weights.empty() ? weights.at(i) : 1.0;
-      file_in->GetObject( name.c_str(), ptr_stat_calculate );
-      file_in->GetObject( name.c_str(), ptr_stat_collect );
-      if( ptr_stat_calculate ){
-        averaging_objects_.push_back( Qn::DataContainerStatCalculate(*ptr_stat_calculate)*weight );
-        ++i;
-        continue;
-      }
-      if( ptr_stat_collect ){
-        averaging_objects_.push_back( Qn::DataContainerStatCalculate(*ptr_stat_collect)*weight );
-        ++i;
-        continue;
-      }
-      throw CannotPullAnObject(str_file_name, name);
+      averaging_objects_.push_back( MakeDataContainer(file_in.get(), name)*weight );
     }
   }
   Systematics<Qn::DataContainerStatCalculate>( const Systematics<Qn::DataContainerStatCalculate>& ) = default;
