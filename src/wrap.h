@@ -12,6 +12,7 @@
 
 #include <TGraphErrors.h>
 #include <TH1.h>
+#include <TFile.h>
 
 namespace ris2{
 
@@ -97,8 +98,11 @@ public:
   /// @brief Function for scaling object. Specialized for each type of storing objects
   Result<T>& Scale( double scale ){ return *this; }
   /// @brief Function used for building ratios. Specialized for each type of storing objects
+  template<typename Func>
+  Result<T>& Perfrom( const Func& func ){ return *this; }
   Result<T> Divide( const Result<T> other ) const { return Result<T>{}; }
   Result<T> ScaleXaxis( double scale ) const { return Result<T>{}; }
+
 };
 
 /// @brief Dummy class for calculating the systematical variation
@@ -118,6 +122,8 @@ public:
   Systematics<T>& Project(Args... args){ return *this; }
   Systematics<T>& Scale( double scale ){ return *this; }
   Systematics<T> ScaleXaxis( double scale ) const { return Systematics<T>{}; }
+  template<typename Func>
+  Systematics<T>& Perform( const Func& func ){ return *this; }
 };
 
 /// @brief Interface class for manipulating the drawable object.
@@ -213,6 +219,12 @@ public:
   Wrap<T>& ScaleXaxis( double scale ){
     result_.ScaleXaxis(scale);
     systematics_.ScaleXaxis(scale);
+    return *this;
+  }
+  template<typename Func>
+  Wrap<T>& Perform(const Func& func){
+    result_.Perform(func);
+    systematics_.Perform(func);
     return *this;
   }
   /// @brief Fitting the result points.
@@ -342,6 +354,11 @@ public:
   Result<Qn::DataContainerStatCalculate> Divide( Result<Qn::DataContainerStatCalculate> other){
     return Result{ average_ / other.average_ };
   }
+  template<typename Func>
+  Result<Qn::DataContainerStatCalculate>& Perform( const Func& func ){
+    func( average_ );
+    return *this;
+  }
 private:
   Qn::DataContainerStatCalculate  average_{};
 };
@@ -417,6 +434,11 @@ public:
     }
     return systematic_points;
   }
+  template<typename Func>
+  Systematics<Qn::DataContainerStatCalculate>& Perform( const Func& func ){
+    std::for_each( averaging_objects_.begin(), averaging_objects_.end(), func );
+    return *this;
+  }
 private:
   std::vector<Qn::DataContainerStatCalculate>  averaging_objects_{};
 };
@@ -426,40 +448,24 @@ private:
 template<>
 class Result<TH1>{
 public:
-  Result<TH1>( std::string str_file_name, std::vector<std::string> vec_objects ){
-    auto file = std::make_unique<TFile>( str_file_name.c_str(), "READ" );
-    std::queue<TH1*> histograms;
-    TH1* ptr;
-    for( const auto& name : vec_objects ){
-      file->GetObject( name.c_str(), ptr );
-      if( !ptr )
-        throw std::runtime_error( std::string("No object in a file").append( " " ).append( name ) );
-      histograms.push( ptr );
-    }
-    auto new_name = std::string(histograms.front()->GetName()) + "_copy";
-    histogram_ = std::unique_ptr<TH1>( dynamic_cast<TH1*>(histograms.front()->Clone( new_name.c_str() )) );
-    histograms.pop();
-    auto list_merge = new TList;
-    while( !histograms.empty() ) {
-      auto to_merge = histograms.front();
-      list_merge->Add(to_merge);
-      histograms.pop();
-    }
-    histogram_->Merge( list_merge );
+  Result<TH1>( std::string str_file_name, std::string object ){
+    file_ = std::make_unique<TFile>( str_file_name.c_str(), "READ" );
+    file_->GetObject( object.c_str(), histogram_ );
   }
   Result<TH1>( const Result<TH1>& other ){
     auto new_name = std::string(other.histogram_->GetName()).append("_copy");
-    histogram_.reset( dynamic_cast<TH1*>(other.histogram_->Clone( new_name.c_str() )) ); 
+    histogram_ = dynamic_cast<TH1*>(other.histogram_->Clone( new_name.c_str() )); 
   }
   Result<TH1>& operator=( const Result<TH1>& other ) {
     auto new_name = std::string(other.histogram_->GetName()).append("_copy");
-    histogram_.reset( dynamic_cast<TH1*>(other.histogram_->Clone( new_name.c_str() )) );
+    histogram_ = dynamic_cast<TH1*>(other.histogram_->Clone( new_name.c_str() ));
     return *this;
   }
   Result<TH1>( Result<TH1>&& ) = default;
   Result<TH1>& operator=( Result<TH1>&& ) = default;
 
   TGraphErrors* GetPoints() const {
+    histogram_->Sumw2();
     auto n_bins = histogram_->GetNbinsX();
     auto x_axis = std::vector<double>{};
     auto y_axis = std::vector<double>{};
@@ -469,7 +475,7 @@ public:
       y_axis.push_back( histogram_->GetBinContent(i+1) );
       y_error.push_back( histogram_->GetBinError(i+1) );
     }
-    auto graph = new TGraphErrors(n_bins, x_axis.data(), y_axis.data(), nullptr, y_axis.data() );
+    auto graph = new TGraphErrors(n_bins, x_axis.data(), y_axis.data(), nullptr, y_error.data() );
     return graph;
   }
   Result<TH1>& Rebin(int n_groups){
@@ -482,71 +488,17 @@ public:
   }
   Result<TH1> Divide( const Result<TH1>& other ){
     auto result = Result<TH1>(*this);
-    result.histogram_->Divide( other.histogram_.get() );
+    result.histogram_->Divide( other.histogram_ );
     return result;
   }
-private:
-  std::unique_ptr<TH1> histogram_;
-};
-
-template<>
-class Systematics<TH1>{
-public:
-  Systematics<TH1>( std::string str_file_name, std::vector<std::string> vec_objects ){
-    auto file = std::make_unique<TFile>( str_file_name.c_str(), "READ" );
-    std::queue<TH1*> histograms;
-    TH1* ptr;
-    for( const auto& name : vec_objects ){
-      file->GetObject( name.c_str(), ptr );
-      if( !ptr )
-        throw std::runtime_error( std::string("No object in a file").append( " " ).append( name ) );
-      averaging_objects_.emplace_back( ptr );
-    }
-  }
-  Systematics<TH1>& Rebin(int n_groups){
-    std::for_each( averaging_objects_.begin(), averaging_objects_.end(),
-      [n_groups]( const auto& ptr ){ ptr->Rebin(n_groups); } );
+  template<typename Func>
+  Result<TH1>& Perform(const Func& func){
+    func(histogram_);
     return *this;
   }
-  Systematics<TH1>& Scale( double scale ){
-    std::for_each( averaging_objects_.begin(), averaging_objects_.end(),
-      [scale]( const auto& ptr ){ ptr->Scale(scale); } );
-    return *this;
-  }
-  TGraphErrors* GetPoints(  ){
-    auto new_name = std::string(averaging_objects_.front()->GetName()) + "_copy";
-    auto average = std::unique_ptr<TH1>( dynamic_cast<TH1*>(averaging_objects_.front()->Clone( new_name.c_str() )) );
-    auto list_merge = new TList;
-    for( int i=1; i<averaging_objects_.size(); ++i ) {
-      auto to_merge = averaging_objects_.at(i).get();
-      list_merge->Add(to_merge);
-    }
-    average->Merge( list_merge );
-    auto n_bins = average->GetNbinsX();
-    auto x_axis = std::vector<double>{};
-    auto y_axis = std::vector<double>{};
-    auto y_error = std::vector<double>{};
-    for( int i=0; i<n_bins; ++i ){
-      x_axis.push_back( average->GetBinCenter(i+1) );
-      y_axis.push_back( average->GetBinContent(i+1) );
-      y_error.push_back( average->GetBinError(i+1) );
-    }
-    auto graph = new TGraphErrors(n_bins, x_axis.data(), y_axis.data(), nullptr, y_axis.data() );
-    for( int i=0; i<graph->GetN(); ++i ){
-      auto x_hi = average->GetXaxis()->GetBinUpEdge(i);
-      auto x_lo = average->GetXaxis()->GetBinLowEdge(i);
-      auto x_err = fabs(x_hi - x_lo) / 6;
-      auto y_err = fabs(average->GetBinContent(i) - averaging_objects_.front()->GetBinContent(i));
-      for( const auto& obj : averaging_objects_ ){
-        auto err = fabs(average->GetBinContent(i) - obj->GetBinContent(i));
-        y_err = std::max( y_err, err );
-      }
-      graph->SetPointError( i, x_err, y_err );
-    }
-    return graph;
-  }
 private:
-  std::vector<std::unique_ptr<TH1>> averaging_objects_{};
+  TH1* histogram_;
+  std::unique_ptr<TFile> file_{};
 };
 
 template<>
@@ -606,7 +558,7 @@ public:
     return *this;
   }
   template<typename Func>
-  Result& Perform( const Func& function ){ function(graph_.get()); return *this; }
+  Result& Perform( const Func& function ){ function(graph_); return *this; }
   TGraphErrors* GetPoints(){
     return dynamic_cast<TGraphErrors*>( graph_->Clone() );
   }
